@@ -592,7 +592,7 @@ module.exports = {
 
             // Construir link
             const resetBaseUrl =
-              config?.email?.resetBaseUrl || "http://localhost:5173/reset-password";
+              process.env.RESET_BASE_URL || "http://localhost:5173/reset-password";
             const resetLink = `${resetBaseUrl}?token=${token}`;
 
             // Enviar correo

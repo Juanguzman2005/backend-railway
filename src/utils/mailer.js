@@ -1,25 +1,49 @@
+// src/utils/mailer.js
 const nodemailer = require("nodemailer");
-const { config } = require("../config"); // <-- asegúrate que existe y exporta { config }
 
-const emailConfig = config?.email;
-if (!emailConfig) {
-  throw new Error("Config email no está definida. Revisa config.yml y src/config.js");
+function getEmailConfig() {
+  // lee de variables de entorno (Railway / producción)
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT;
+  const secure = process.env.SMTP_SECURE;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.MAIL_FROM;
+
+  // Si NO hay config SMTP, devolvemos null (para no romper el server)
+  if (!host || !port || !user || !pass || !from) return null;
+
+  return {
+    host,
+    port: Number(port),
+    secure: String(secure).toLowerCase() === "true",
+    user,
+    pass,
+    from,
+  };
 }
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: process.env.SMTP_SECURE === "true",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-
 async function sendMail(to, subject, html) {
-  return transporter.sendMail({
-    from: emailConfig.from,
+  const cfg = getEmailConfig();
+
+  if (!cfg) {
+    // No rompemos el servidor; solo avisamos.
+    console.warn("⚠️ SMTP no configurado. No se enviará correo.");
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: {
+      user: cfg.user,
+      pass: cfg.pass,
+    },
+  });
+
+  await transporter.sendMail({
+    from: cfg.from,
     to,
     subject,
     html,
