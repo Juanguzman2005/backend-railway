@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const { sendMail } = require("../utils/mailer");
 const { v4: uuidv4 } = require("uuid"); // instalaremos uuid
 
-const SECRET = config?.jwt?.secret || "CLAVE_SUPER_SECRETA";
+const SECRET = process.env.JWT_SECRET || "CLAVE_SUPER_SECRETA";
 const USERS_COLLECTION = "usuarios";
 
 
