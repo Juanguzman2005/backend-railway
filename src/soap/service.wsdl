@@ -1,0 +1,418 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions name="StudentService"
+  targetNamespace="http://example.com/student"
+  xmlns="http://schemas.xmlsoap.org/wsdl/"
+  xmlns:tns="http://example.com/student"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/">
+
+  <!-- ================= MENSAJES ================= -->
+  <message name="RequestPasswordResetRequest">
+    <part name="correo" type="xsd:string" />
+  </message>
+
+  <message name="RequestPasswordResetResponse">
+    <part name="message" type="xsd:string" />
+    <part name="error" type="xsd:string" />
+  </message>
+
+  <message name="ConfirmPasswordResetRequest">
+    <part name="token" type="xsd:string" />
+    <part name="nuevaContraseña" type="xsd:string" />
+  </message>
+
+  <message name="ConfirmPasswordResetResponse">
+    <part name="message" type="xsd:string" />
+    <part name="error" type="xsd:string" />
+  </message>
+
+  <!-- Registro -->
+  <message name="RegisterStudentRequest">
+    <part name="nombres" type="xsd:string"/>
+    <part name="apellidos" type="xsd:string"/>
+    <part name="cedula" type="xsd:string"/>
+    <part name="correo" type="xsd:string"/>
+    <part name="carrera" type="xsd:string"/>
+    <part name="contraseña" type="xsd:string"/>
+    <part name="semestre" type="xsd:string"/>
+  </message>
+
+  <message name="RegisterStudentResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="uid" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <!-- Login -->
+  <message name="LoginRequest">
+    <part name="correo" type="xsd:string"/>
+    <part name="contraseña" type="xsd:string"/>
+  </message>
+
+  <message name="LoginResponse">
+    <part name="token" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="GoogleLoginRequest">
+    <part name="idToken" type="xsd:string"/>
+  </message>
+
+  <message name="GoogleLoginResponse">
+    <part name="token" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <!-- GetProfile / UpdateProfile -->
+  <message name="GetProfileRequest">
+    <part name="token" type="xsd:string"/>
+  </message>
+
+  <message name="GetProfileResponse">
+    <part name="uid" type="xsd:string"/>
+    <part name="nombres" type="xsd:string"/>
+    <part name="apellidos" type="xsd:string"/>
+    <part name="cedula" type="xsd:string"/>
+    <part name="correo" type="xsd:string"/>
+    <part name="carrera" type="xsd:string"/>
+    <part name="semestre" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="UpdateProfileRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="nombres" type="xsd:string"/>
+    <part name="apellidos" type="xsd:string"/>
+    <part name="cedula" type="xsd:string"/>
+    <part name="correo" type="xsd:string"/>
+    <part name="carrera" type="xsd:string"/>
+    <part name="semestre" type="xsd:string"/>
+    <part name="nuevaContraseña" type="xsd:string"/>
+  </message>
+
+  <message name="UpdateProfileResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <!-- Semestres -->
+  <message name="CreateSemestreRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="nombreSemestre" type="xsd:string"/>
+  </message>
+
+  <message name="CreateSemestreResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="ListSemestresRequest">
+    <part name="token" type="xsd:string"/>
+  </message>
+
+  <message name="ListSemestresResponse">
+    <part name="semestres" type="xsd:string"/> <!-- JSON -->
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <!-- Materias -->
+  <message name="CreateMateriaRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="nombreMateria" type="xsd:string"/>
+    <part name="creditos" type="xsd:string"/>
+  </message>
+
+  <message name="CreateMateriaResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="materiaId" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="ListMateriasRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+  </message>
+
+  <message name="ListMateriasResponse">
+    <part name="materias" type="xsd:string"/> <!-- JSON -->
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="GetMateriaRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="materiaId" type="xsd:string"/>
+  </message>
+
+  <message name="GetMateriaResponse">
+    <part name="id" type="xsd:string"/>
+    <part name="nombreMateria" type="xsd:string"/>
+    <part name="creditos" type="xsd:string"/>
+    <part name="nota1" type="xsd:string"/>
+    <part name="nota2" type="xsd:string"/>
+    <part name="nota3" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="UpdateMateriaRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="materiaId" type="xsd:string"/>
+    <part name="nombreMateria" type="xsd:string"/>
+    <part name="creditos" type="xsd:string"/>
+  </message>
+
+  <message name="UpdateMateriaResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="DeleteMateriaRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="materiaId" type="xsd:string"/>
+  </message>
+
+  <message name="DeleteMateriaResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <!-- Notas -->
+  <message name="RegistrarNotaRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="materiaId" type="xsd:string"/>
+    <part name="corte" type="xsd:string"/>
+    <part name="nota" type="xsd:string"/>
+  </message>
+
+  <message name="RegistrarNotaResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="EliminarNotaRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="materiaId" type="xsd:string"/>
+    <part name="corte" type="xsd:string"/>
+  </message>
+
+  <message name="EliminarNotaResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <!-- ================= PORT TYPE ================= -->
+  <portType name="StudentPort">
+   
+    <operation name="RequestPasswordReset">
+      <input message="tns:RequestPasswordResetRequest" />
+      <output message="tns:RequestPasswordResetResponse" />
+    </operation>
+
+    <operation name="ConfirmPasswordReset">
+      <input message="tns:ConfirmPasswordResetRequest" />
+      <output message="tns:ConfirmPasswordResetResponse" />
+    </operation>
+
+    <operation name="GoogleLogin">
+      <input message="tns:GoogleLoginRequest"/>
+      <output message="tns:GoogleLoginResponse"/>
+    </operation>
+
+    <operation name="RegisterStudent">
+      <input message="tns:RegisterStudentRequest"/>
+      <output message="tns:RegisterStudentResponse"/>
+    </operation>
+
+    <operation name="Login">
+      <input message="tns:LoginRequest"/>
+      <output message="tns:LoginResponse"/>
+    </operation>
+
+    <operation name="GetProfile">
+      <input message="tns:GetProfileRequest"/>
+      <output message="tns:GetProfileResponse"/>
+    </operation>
+
+    <operation name="UpdateProfile">
+      <input message="tns:UpdateProfileRequest"/>
+      <output message="tns:UpdateProfileResponse"/>
+    </operation>
+
+    <operation name="CreateSemestre">
+      <input message="tns:CreateSemestreRequest"/>
+      <output message="tns:CreateSemestreResponse"/>
+    </operation>
+
+    <operation name="ListSemestres">
+      <input message="tns:ListSemestresRequest"/>
+      <output message="tns:ListSemestresResponse"/>
+    </operation>
+
+    <operation name="CreateMateria">
+      <input message="tns:CreateMateriaRequest"/>
+      <output message="tns:CreateMateriaResponse"/>
+    </operation>
+
+    <operation name="ListMaterias">
+      <input message="tns:ListMateriasRequest"/>
+      <output message="tns:ListMateriasResponse"/>
+    </operation>
+
+    <operation name="GetMateria">
+      <input message="tns:GetMateriaRequest"/>
+      <output message="tns:GetMateriaResponse"/>
+    </operation>
+
+    <operation name="UpdateMateria">
+      <input message="tns:UpdateMateriaRequest"/>
+      <output message="tns:UpdateMateriaResponse"/>
+    </operation>
+
+    <operation name="DeleteMateria">
+      <input message="tns:DeleteMateriaRequest"/>
+      <output message="tns:DeleteMateriaResponse"/>
+    </operation>
+
+    <operation name="RegistrarNota">
+      <input message="tns:RegistrarNotaRequest"/>
+      <output message="tns:RegistrarNotaResponse"/>
+    </operation>
+
+    <operation name="EliminarNota">
+      <input message="tns:EliminarNotaRequest"/>
+      <output message="tns:EliminarNotaResponse"/>
+    </operation>
+
+  </portType>
+
+  <!-- ================= BINDING ================= -->
+  <binding name="StudentBinding" type="tns:StudentPort">
+    <soap:binding style="rpc"
+      transport="http://schemas.xmlsoap.org/soap/http"/>
+
+    <operation name="GoogleLogin">
+      <soap:operation soapAction="GoogleLogin" />
+      <input>
+       <soap:body use="literal" />
+        </input>
+        <output>
+       <soap:body use="literal" />
+        </output>
+    </operation>
+   
+    <operation name="RequestPasswordReset">
+      <soap:operation soapAction="RequestPasswordReset" />
+      <input>
+       <soap:body use="literal" />
+        </input>
+        <output>
+       <soap:body use="literal" />
+        </output>
+    </operation>
+
+    <operation name="ConfirmPasswordReset">
+      <soap:operation soapAction="ConfirmPasswordReset" />
+      <input>
+       <soap:body use="literal" />
+        </input>
+        <output>
+      <soap:body use="literal" />
+       </output>
+    </operation>
+
+
+    <operation name="RegisterStudent">
+      <soap:operation soapAction="RegisterStudent"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="Login">
+      <soap:operation soapAction="Login"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="GetProfile">
+      <soap:operation soapAction="GetProfile"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="UpdateProfile">
+      <soap:operation soapAction="UpdateProfile"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="CreateSemestre">
+      <soap:operation soapAction="CreateSemestre"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="ListSemestres">
+      <soap:operation soapAction="ListSemestres"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="CreateMateria">
+      <soap:operation soapAction="CreateMateria"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="ListMaterias">
+      <soap:operation soapAction="ListMaterias"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="GetMateria">
+      <soap:operation soapAction="GetMateria"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="UpdateMateria">
+      <soap:operation soapAction="UpdateMateria"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="DeleteMateria">
+      <soap:operation soapAction="DeleteMateria"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="RegistrarNota">
+      <soap:operation soapAction="RegistrarNota"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="EliminarNota">
+      <soap:operation soapAction="EliminarNota"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+  </binding>
+
+  <!-- ================= SERVICE ================= -->
+  <service name="StudentService">
+    <documentation>API SOAP para gestión académica universitaria</documentation>
+    <port name="StudentPort" binding="tns:StudentBinding">
+      <soap:address location="http://localhost:3000/soap"/>
+    </port>
+  </service>
+
+</definitions>
