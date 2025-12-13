@@ -6,42 +6,25 @@ const http = require("http");
 const cors = require("cors");
 const path = require("path");
 
-// 🔥 NO config.yml en producción
-// Railway / PM2 / servidores usan process.env
-
 // Inicializa Firebase
-const { db, admin } = require("./src/database/firebase");
+require("./src/database/firebase"); // si no usas db/admin aquí, basta con inicializar
+
 const allowedOrigins = [
   "https://notas-byjuanguzman.netlify.app",
   "http://localhost:5173",
 ];
 
-// Crear app de Express
 const app = express();
+
+// ✅ CORS para rutas normales (REST)
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // permitir herramientas tipo Postman o llamadas sin origin
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-
-      return callback(new Error("Not allowed by CORS: " + origin));
-    },
+    origin: allowedOrigins,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "SOAPAction"],
-    credentials: false,
   })
 );
 
-// 👇 importante: responder preflight
-app.options("*", cors());
-app.options("/soap", (req, res) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, SOAPAction");
-  return res.sendStatus(204);
-});
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -52,15 +35,40 @@ app.get("/", (req, res) => {
   });
 });
 
+// Servidor HTTP
+const server = http.createServer(app);
+
+// ✅ CORS a nivel de SERVER para /soap (esto es lo que faltaba)
+server.prependListener("request", (req, res) => {
+  if (!req.url) return;
+
+  // Solo para /soap (incluye /soap?wsdl)
+  if (req.url.startsWith("/soap")) {
+    const origin = req.headers.origin;
+
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    }
+
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, SOAPAction");
+
+    // Responder preflight
+    if (req.method === "OPTIONS") {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+  }
+});
+
 // Servicio SOAP
 const soapService = require("./src/soap/service");
 const wsdlPath = path.join(__dirname, "src", "soap", "service.wsdl");
 const wsdlXml = fs.readFileSync(wsdlPath, "utf8");
 
-// Servidor HTTP
-const server = http.createServer(app);
-
-// 🔑 Railway usa process.env.PORT
+// Railway usa process.env.PORT
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, "0.0.0.0", () => {
