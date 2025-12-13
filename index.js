@@ -11,10 +11,37 @@ const path = require("path");
 
 // Inicializa Firebase
 const { db, admin } = require("./src/database/firebase");
+const allowedOrigins = [
+  "https://notas-byjuanguzman.netlify.app",
+  "http://localhost:5173",
+];
 
 // Crear app de Express
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // permitir herramientas tipo Postman o llamadas sin origin
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      return callback(new Error("Not allowed by CORS: " + origin));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "SOAPAction"],
+    credentials: false,
+  })
+);
+
+// 👇 importante: responder preflight
+app.options("*", cors());
+app.options("/soap", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, SOAPAction");
+  return res.sendStatus(204);
+});
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
