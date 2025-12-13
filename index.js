@@ -5,49 +5,39 @@ const fs = require("fs");
 const http = require("http");
 const cors = require("cors");
 const path = require("path");
-const YAML = require("yamljs");
 
-// ================== CONFIG ==================
-const config = YAML.load(path.join(__dirname, "config.yml"));
+// 🔥 NO config.yml en producción
+// Railway / PM2 / servidores usan process.env
 
-// ================== FIREBASE ==================
+// Inicializa Firebase
 const { db, admin } = require("./src/database/firebase");
 
-// ================== EXPRESS ==================
+// Crear app de Express
 const app = express();
-app.use(cors({
-  origin: ["http://localhost:5173", "https://notas-byjuanguzman.netlify.app/"],
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "SOAPAction", "Authorization"]
-}));
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// ================== FRONTEND (DIST) ==================
-const FRONTEND_PATH = path.join(__dirname, "dist");
-
-// Servir frontend compilado
-app.use(express.static(FRONTEND_PATH));
-
-// Soporte para React Router (evita error 404 al recargar)
-app.get("*", (req, res, next) => {
-  if (req.originalUrl.startsWith("/soap")) return next();
-  res.sendFile(path.join(FRONTEND_PATH, "index.html"));
+// Endpoint de prueba
+app.get("/", (req, res) => {
+  res.json({
+    message: "Backend de notas funcionando. API principal por SOAP en /soap",
+  });
 });
 
-// ================== SOAP ==================
+// Servicio SOAP
 const soapService = require("./src/soap/service");
 const wsdlPath = path.join(__dirname, "src", "soap", "service.wsdl");
 const wsdlXml = fs.readFileSync(wsdlPath, "utf8");
 
-// ================== SERVER ==================
+// Servidor HTTP
 const server = http.createServer(app);
 
-// Render / Railway / local
+// 🔑 Railway usa process.env.PORT
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, "0.0.0.0", () => {
   soap.listen(server, "/soap", soapService, wsdlXml);
-  console.log(`✅ http://localhost:${PORT}`);
+  console.log(`✅ Servidor corriendo en puerto ${PORT}`);
+  console.log(`✅ WSDL: /soap?wsdl`);
 });
-

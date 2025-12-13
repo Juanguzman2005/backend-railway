@@ -7,14 +7,15 @@ if (!emailConfig) {
 }
 
 const transporter = nodemailer.createTransport({
-  host: emailConfig.host,
-  port: emailConfig.port,
-  secure: emailConfig.secure, // false para 587
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
-    user: emailConfig.user,
-    pass: emailConfig.pass,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
+
 
 async function sendMail(to, subject, html) {
   return transporter.sendMail({
