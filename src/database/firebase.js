@@ -1,3 +1,5 @@
+console.log("ENV FIREBASE_SERVICE_ACCOUNT existe?:", !!process.env.FIREBASE_SERVICE_ACCOUNT);
+console.log("ENV keys contienen FIREBASE?:", Object.keys(process.env).filter(k => k.includes("FIREBASE")));
 const admin = require("firebase-admin");
 
 if (!admin.apps.length) {
