@@ -6,26 +6,24 @@ const http = require("http");
 const cors = require("cors");
 const path = require("path");
 
-// Inicializa Firebase
+// Inicializa Firebase (si tu archivo exporta admin/db está bien dejarlo así)
 require("./src/database/firebase");
 
-const allowedOrigins = [
+const allowedOrigins = new Set([
   "https://notas-byjuanguzman.netlify.app",
   "http://localhost:5173",
-];
+]);
 
 const app = express();
 
-// CORS para rutas normales (GET / por ejemplo)
+// CORS para rutas normales (GET /)
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // Postman / server-to-server
-      if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.has(origin)) return cb(null, true);
       return cb(new Error("Not allowed by CORS: " + origin));
     },
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "SOAPAction"],
   })
 );
 
@@ -33,36 +31,30 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-  res.json({
-    message: "Backend de notas funcionando. API principal por SOAP en /soap",
-  });
+  res.json({ message: "Backend de notas funcionando. SOAP en /soap" });
 });
 
-// Servicio SOAP + WSDL
+// SOAP + WSDL
 const soapService = require("./src/soap/service");
 const wsdlPath = path.join(__dirname, "src", "soap", "service.wsdl");
 const wsdlXml = fs.readFileSync(wsdlPath, "utf8");
 
-// ✅ Crear server ANTES de usarlo
 const server = http.createServer(app);
 
-// ✅ FORZAR headers CORS también en /soap (incluye POST y OPTIONS)
+// ✅ CORS fuerte para /soap (sirve para OPTIONS y para el POST real)
 server.prependListener("request", (req, res) => {
   if (!req.url) return;
   if (!req.url.startsWith("/soap")) return;
 
   const origin = req.headers.origin;
 
-  // Si viene origin y está permitido, lo reflejamos
-  if (origin && allowedOrigins.includes(origin)) {
+  // refleja el origin si está permitido, si no, no lo pongas (evita problemas)
+  if (origin && allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
-  } else {
-    // si no viene origin (postman) o no coincide, puedes dejarlo en "*"
-    res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, SOAPAction");
 
   if (req.method === "OPTIONS") {
@@ -71,7 +63,7 @@ server.prependListener("request", (req, res) => {
   }
 });
 
-// Puerto Railway
+// Railway
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, "0.0.0.0", () => {
