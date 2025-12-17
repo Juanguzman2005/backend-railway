@@ -8,31 +8,25 @@ const path = require("path");
 // Inicializa Firebase
 require("./src/database/firebase");
 
+// ✅ CREA app ANTES de usar app.use
+const app = express();
+
+// ✅ Orígenes permitidos fijos
 const allowedOrigins = [
-  //"https://notas-byjuanguzman2005.netlify.app",
   "http://localhost:5173",
+  // Si quieres forzar solo tu dominio, descomenta y pon el tuyo:
+  // "https://notas-byjuanguzman2005.netlify.app",
 ];
 
-const isNetlify = (origin) =>
-  origin && origin.endsWith(".netlify.app");
+// ✅ Permitir cualquier subdominio de netlify
+const isNetlify = (origin) => origin && origin.endsWith(".netlify.app");
 
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      if (isNetlify(origin)) return cb(null, true);
-      return cb(new Error("Not allowed by CORS: " + origin));
-    },
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "SOAPAction"],
-  })
-);
-
+// ✅ Una sola config de CORS
 const corsOptions = {
   origin: (origin, cb) => {
     if (!origin) return cb(null, true); // Postman / server-to-server
     if (allowedOrigins.includes(origin)) return cb(null, true);
+    if (isNetlify(origin)) return cb(null, true);
     return cb(new Error("Not allowed by CORS: " + origin));
   },
   methods: ["GET", "POST", "OPTIONS"],
@@ -41,11 +35,9 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-const app = express();
-
 // ✅ CORS primero
 app.use(cors(corsOptions));
-// ✅ Preflight para cualquier ruta (incluye /soap)
+// ✅ Preflight para todas las rutas (incluye /soap)
 app.options("*", cors(corsOptions));
 
 // Body parsers
@@ -64,7 +56,7 @@ const soapService = require("./src/soap/service");
 const wsdlPath = path.join(__dirname, "src", "soap", "service.wsdl");
 const wsdlXml = fs.readFileSync(wsdlPath, "utf8");
 
-// ✅ Monta SOAP sobre express app (así lo cubre CORS)
+// ✅ SOAP montado sobre Express (queda cubierto por CORS)
 soap.listen(app, "/soap", soapService, wsdlXml);
 
 const PORT = process.env.PORT || 3000;
