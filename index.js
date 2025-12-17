@@ -9,9 +9,25 @@ const path = require("path");
 require("./src/database/firebase");
 
 const allowedOrigins = [
-  "https://notas-byjuanguzman.netlify.app",
+  //"https://notas-byjuanguzman2005.netlify.app",
   "http://localhost:5173",
 ];
+
+const isNetlify = (origin) =>
+  origin && origin.endsWith(".netlify.app");
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (isNetlify(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS: " + origin));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "SOAPAction"],
+  })
+);
 
 const corsOptions = {
   origin: (origin, cb) => {
