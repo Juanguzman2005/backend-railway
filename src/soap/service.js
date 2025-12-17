@@ -548,14 +548,23 @@ module.exports = {
       // ------------------------------------------------
       RequestPasswordReset(args, callback) {
         (async () => {
+          // ✅ asegurar callback solo una vez
+          let done = false;
+          const callbackOnce = (payload) => {
+            if (done) return;
+            done = true;
+            callback(payload);
+          };
+
+          const GENERIC_MSG =
+            "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.";
+
           try {
-            const { correo } = args;
+            const correoRaw = args?.correo ?? "";
+            const correo = String(correoRaw).trim().toLowerCase();
 
             if (!correo) {
-              return callback({
-                message: "",
-                error: "El correo es obligatorio",
-              });
+              return callbackOnce({ message: "", error: "El correo es obligatorio" });
             }
 
             const snapshot = await db
@@ -564,13 +573,9 @@ module.exports = {
               .limit(1)
               .get();
 
+            // ✅ por seguridad: siempre respondemos lo mismo
             if (snapshot.empty) {
-              // Por seguridad, no decimos si existe o no.
-              return callback({
-                message:
-                  "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.",
-                error: "",
-              });
+              return callbackOnce({ message: GENERIC_MSG, error: "" });
             }
 
             const userDoc = snapshot.docs[0];
@@ -579,8 +584,8 @@ module.exports = {
             // Crear token único
             const token = uuidv4();
 
-            // Guardar token en colección passwordResets
-            const expiresAt = Date.now() + 1000 * 60 * 30; // 30 minutos
+            // 30 minutos
+            const expiresAt = Date.now() + 1000 * 60 * 30;
 
             await db.collection("passwordResets").doc(token).set({
               uid,
@@ -590,12 +595,12 @@ module.exports = {
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            // Construir link
+            // Construir link (✅ en prod pon RESET_BASE_URL en Railway)
             const resetBaseUrl =
               process.env.RESET_BASE_URL || "http://localhost:5173/reset-password";
-            const resetLink = `${resetBaseUrl}?token=${token}`;
 
-            // Enviar correo
+            const resetLink = `${resetBaseUrl}?token=${encodeURIComponent(token)}`;
+
             const html = `
         <p>Hola,</p>
         <p>Has solicitado restablecer tu contraseña en <b>Notas Universitarias</b>.</p>
@@ -604,23 +609,18 @@ module.exports = {
         <p>Este enlace es válido por 30 minutos. Si tú no solicitaste este cambio, puedes ignorar este mensaje.</p>
       `;
 
-            await sendMail(
-              correo,
-              "Restablecer contraseña - Notas Universitarias",
-              html
-            );
+            // ✅ NO dejar colgada la request si el SMTP falla
+            try {
+              await sendMail(correo, "Restablecer contraseña - Notas Universitarias", html);
+            } catch (mailErr) {
+              console.error("❌ Error enviando correo (SMTP):", mailErr?.message || mailErr);
+              // NO devolvemos error al usuario para no filtrar y para no frenar el flujo
+            }
 
-            callback({
-              message:
-                "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.",
-              error: "",
-            });
+            return callbackOnce({ message: GENERIC_MSG, error: "" });
           } catch (err) {
             console.error("RequestPasswordReset error:", err);
-            callback({
-              message: "",
-              error: err.message,
-            });
+            return callbackOnce({ message: "", error: "Error procesando la solicitud" });
           }
         })();
       },
@@ -630,74 +630,113 @@ module.exports = {
       // ------------------------------------------------
       ConfirmPasswordReset(args, callback) {
         (async () => {
+          // ✅ asegurar callback solo una vez
+          let done = false;
+          const callbackOnce = (payload) => {
+            if (done) return;
+            done = true;
+            callback(payload);
+          };
+
           try {
-            const { token, nuevaContraseña } = args;
+            const tokenRaw = args?.token ?? "";
+            const passRaw = args?.nuevaContraseña ?? "";
+
+            const token = String(tokenRaw).trim();
+            const nuevaContraseña = String(passRaw);
 
             if (!token || !nuevaContraseña) {
-              return callback({
+              return callbackOnce({
                 message: "",
                 error: "Token y nueva contraseña son obligatorios",
               });
             }
 
-            if (String(nuevaContraseña).length < 6) {
-              return callback({
+            if (nuevaContraseña.length < 6) {
+              return callbackOnce({
                 message: "",
                 error: "La contraseña debe tener al menos 6 caracteres",
               });
             }
 
             // Buscar el token
-            const resetDoc = await db.collection("passwordResets").doc(token).get();
+            const resetRef = db.collection("passwordResets").doc(token);
+            const resetDoc = await resetRef.get();
+
             if (!resetDoc.exists) {
-              return callback({
+              return callbackOnce({
                 message: "",
                 error: "Token inválido o ya utilizado",
               });
             }
 
-            const data = resetDoc.data();
+            const data = resetDoc.data() || {};
 
             if (data.used) {
-              return callback({
+              return callbackOnce({
                 message: "",
                 error: "Token ya utilizado",
               });
             }
 
-            if (Date.now() > data.expiresAt) {
-              return callback({
+            // Expirado
+            if (Date.now() > Number(data.expiresAt || 0)) {
+              // ✅ opcional: marcar como usado para “matar” el token expirado
+              try {
+                await resetRef.update({
+                  used: true,
+                  usedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                  reason: "expired",
+                });
+              } catch (e) {
+                console.warn("No se pudo marcar token expirado:", e?.message || e);
+              }
+
+              return callbackOnce({
                 message: "",
                 error: "Token expirado, solicita uno nuevo",
               });
             }
 
             const uid = data.uid;
+            if (!uid) {
+              return callbackOnce({
+                message: "",
+                error: "Token inválido (sin usuario asociado)",
+              });
+            }
 
             // Actualizar contraseña del usuario
             const hash = await bcrypt.hash(nuevaContraseña, 10);
+
             await db.collection(USERS_COLLECTION).doc(uid).update({
               contraseña_hash: hash,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
             // Marcar token como usado
-            await db.collection("passwordResets").doc(token).update({
+            await resetRef.update({
               used: true,
+              usedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            callback({
+            return callbackOnce({
               message: "Contraseña actualizada correctamente",
               error: "",
             });
           } catch (err) {
             console.error("ConfirmPasswordReset error:", err);
-            callback({
+            return callbackOnce({
               message: "",
-              error: err.message,
+              error: "Error actualizando la contraseña",
             });
           }
         })();
       },
+
+
       UpdateSemestre(args, callback) {
         (async () => {
           try {
