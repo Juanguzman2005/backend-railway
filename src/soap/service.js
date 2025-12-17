@@ -698,7 +698,47 @@ module.exports = {
           }
         })();
       },
+      UpdateSemestre(args, callback) {
+        (async () => {
+          try {
+            const { token, semestreId, nombreSemestre } = args;
+            const { uid } = await verifyToken(token);
 
+            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
+            if (!nombreSemestre) return callback({ message: "", error: "nombreSemestre es obligatorio" });
+
+            await userDoc(uid)
+              .collection("semestres")
+              .doc(semestreId)
+              .update({ nombreSemestre });
+
+            callback({ message: "Semestre actualizado correctamente", error: "" });
+          } catch (err) {
+            console.error("UpdateSemestre error:", err);
+            callback({ message: "", error: err.message });
+          }
+        })();
+      },
+      DeleteSemestre(args, callback) {
+        (async () => {
+          try {
+            const { token, semestreId } = args;
+            const { uid } = await verifyToken(token);
+
+            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
+
+            const semestreRef = userDoc(uid).collection("semestres").doc(semestreId);
+
+            // Borra semestre y TODO lo de adentro (materias)
+            await admin.firestore().recursiveDelete(semestreRef);
+
+            callback({ message: "Semestre eliminado correctamente", error: "" });
+          } catch (err) {
+            console.error("DeleteSemestre error:", err);
+            callback({ message: "", error: err.message });
+          }
+        })();
+      },
     }
   }
 };
