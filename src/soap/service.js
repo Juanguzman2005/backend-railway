@@ -1,13 +1,11 @@
 const { db, admin } = require("../database/firebase");
-const { config } = require("../config");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { sendMail } = require("../utils/mailer");
-const { v4: uuidv4 } = require("uuid"); // instalaremos uuid
+const { v4: uuidv4 } = require("uuid");
 
 const SECRET = process.env.JWT_SECRET || "CLAVE_SUPER_SECRETA";
 const USERS_COLLECTION = "usuarios";
-
 
 // Utilidad para verificar token
 async function verifyToken(token) {
@@ -22,6 +20,18 @@ async function verifyToken(token) {
 // Helper: obtener referencia de usuario
 function userDoc(uid) {
   return db.collection(USERS_COLLECTION).doc(uid);
+}
+
+// ✅ Borra una subcolección por lotes
+async function deleteCollection(collectionRef, batchSize = 50) {
+  const snapshot = await collectionRef.limit(batchSize).get();
+  if (snapshot.empty) return;
+
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+
+  await deleteCollection(collectionRef, batchSize);
 }
 
 module.exports = {
@@ -40,26 +50,20 @@ module.exports = {
               correo,
               carrera,
               contraseña,
-              semestre
+              semestre,
             } = args;
 
-            // Validación básica
             if (!correo || !contraseña) {
-              return callback({
-                error: "Correo y contraseña son obligatorios"
-              });
+              return callback({ error: "Correo y contraseña son obligatorios" });
             }
 
-            // Verificar si el usuario ya existe
             const existing = await db
               .collection(USERS_COLLECTION)
               .where("correo", "==", correo)
               .get();
 
             if (!existing.empty) {
-              return callback({
-                error: "Ya existe un usuario con ese correo"
-              });
+              return callback({ error: "Ya existe un usuario con ese correo" });
             }
 
             const hash = await bcrypt.hash(contraseña, 10);
@@ -70,12 +74,12 @@ module.exports = {
               correo,
               carrera: carrera || "",
               contraseña_hash: hash,
-              semestre: semestre || ""
+              semestre: semestre || "",
             });
 
             return callback({
               message: "Usuario registrado correctamente",
-              uid: docRef.id
+              uid: docRef.id,
             });
           } catch (err) {
             console.error("RegisterStudent error:", err);
@@ -105,39 +109,31 @@ module.exports = {
             const doc = snapshot.docs[0];
             const data = doc.data();
 
-            const valid = await bcrypt.compare(
-              contraseña,
-              data.contraseña_hash
-            );
+            const valid = await bcrypt.compare(contraseña, data.contraseña_hash);
 
             if (!valid) {
               return callback({ token: "", error: "Contraseña incorrecta" });
             }
 
-            const token = jwt.sign({ uid: doc.id }, SECRET, {
-              expiresIn: "4h"
-            });
+            const token = jwt.sign({ uid: doc.id }, SECRET, { expiresIn: "4h" });
 
-            callback({ token });
+            callback({ token, error: "" });
           } catch (err) {
             console.error("Login error:", err);
             callback({ token: "", error: err.message });
           }
         })();
       },
+
       GoogleLogin(args, callback) {
         (async () => {
           try {
             const { idToken } = args;
 
             if (!idToken) {
-              return callback({
-                token: "",
-                error: "ID Token de Google es requerido",
-              });
+              return callback({ token: "", error: "ID Token de Google es requerido" });
             }
 
-            // 1. Verificar el ID Token con Firebase Auth
             const decoded = await admin.auth().verifyIdToken(idToken);
 
             const googleUid = decoded.uid;
@@ -145,14 +141,12 @@ module.exports = {
             const displayName = decoded.name || "";
             const [firstName = "", lastName = ""] = displayName.split(" ");
 
-            // 2. Buscar usuario por firebaseUid
             let snapshot = await db
               .collection(USERS_COLLECTION)
               .where("firebaseUid", "==", googleUid)
               .limit(1)
               .get();
 
-            // Si no hay por firebaseUid, buscamos por correo
             if (snapshot.empty && email) {
               snapshot = await db
                 .collection(USERS_COLLECTION)
@@ -162,8 +156,6 @@ module.exports = {
             }
 
             let docRef;
-
-            // 3. Crear usuario nuevo si no existe
             if (snapshot.empty) {
               docRef = await db.collection(USERS_COLLECTION).add({
                 nombres: firstName,
@@ -173,15 +165,13 @@ module.exports = {
                 carrera: "",
                 semestre: "",
                 firebaseUid: googleUid,
-                contraseña_hash: "", // no se usa para Google
+                contraseña_hash: "",
               });
             } else {
               docRef = snapshot.docs[0].ref;
             }
 
             const uid = docRef.id;
-
-            // 4. Generar JWT propio
             const token = jwt.sign({ uid }, SECRET, { expiresIn: "4h" });
 
             callback({ token, error: "" });
@@ -192,9 +182,8 @@ module.exports = {
         })();
       },
 
-
       // -------------------------------------------------------------------
-      // 3. OBTENER PERFIL DEL USUARIO
+      // 3. OBTENER PERFIL
       // -------------------------------------------------------------------
       GetProfile(args, callback) {
         (async () => {
@@ -213,7 +202,7 @@ module.exports = {
               cedula: data.cedula,
               correo: data.correo,
               carrera: data.carrera,
-              semestre: data.semestre
+              semestre: data.semestre,
             });
           } catch (err) {
             console.error("GetProfile error:", err);
@@ -223,7 +212,7 @@ module.exports = {
       },
 
       // -------------------------------------------------------------------
-      // 4. ACTUALIZAR PERFIL DEL USUARIO
+      // 4. ACTUALIZAR PERFIL
       // -------------------------------------------------------------------
       UpdateProfile(args, callback) {
         (async () => {
@@ -232,20 +221,11 @@ module.exports = {
             const { uid } = await verifyToken(token);
 
             const fieldsToUpdate = {};
-
-            // Actualizamos solo lo que venga definido
-            [
-              "nombres",
-              "apellidos",
-              "cedula",
-              "correo",
-              "carrera",
-              "semestre"
-            ].forEach((field) => {
-              if (args[field] !== undefined) {
-                fieldsToUpdate[field] = args[field];
+            ["nombres", "apellidos", "cedula", "correo", "carrera", "semestre"].forEach(
+              (field) => {
+                if (args[field] !== undefined) fieldsToUpdate[field] = args[field];
               }
-            });
+            );
 
             if (args.nuevaContraseña) {
               const hash = await bcrypt.hash(args.nuevaContraseña, 10);
@@ -254,10 +234,10 @@ module.exports = {
 
             await userDoc(uid).update(fieldsToUpdate);
 
-            callback({ message: "Perfil actualizado correctamente" });
+            callback({ message: "Perfil actualizado correctamente", error: "" });
           } catch (err) {
             console.error("UpdateProfile error:", err);
-            callback({ error: err.message });
+            callback({ message: "", error: err.message });
           }
         })();
       },
@@ -271,12 +251,9 @@ module.exports = {
             const { token, nombreSemestre } = args;
             const { uid } = await verifyToken(token);
 
-            // Crear documento en subcolección "semestres" del usuario
-            const ref = await userDoc(uid)
-              .collection("semestres")
-              .add({
-                nombreSemestre: nombreSemestre || "",
-              });
+            const ref = await userDoc(uid).collection("semestres").add({
+              nombreSemestre: nombreSemestre || "",
+            });
 
             callback({
               message: "Semestre creado correctamente",
@@ -285,14 +262,11 @@ module.exports = {
             });
           } catch (err) {
             console.error("CreateSemestre error:", err);
-            callback({
-              message: "",
-              semestreId: "",
-              error: err.message,
-            });
+            callback({ message: "", semestreId: "", error: err.message });
           }
         })();
       },
+
       // -------------------------------------------------------------------
       // 6. LISTAR SEMESTRES
       // -------------------------------------------------------------------
@@ -302,9 +276,7 @@ module.exports = {
             const { token } = args;
             const { uid } = await verifyToken(token);
 
-            const snapshot = await userDoc(uid)
-              .collection("semestres")
-              .get();
+            const snapshot = await userDoc(uid).collection("semestres").get();
 
             const semestres = [];
             snapshot.forEach((doc) => {
@@ -315,21 +287,97 @@ module.exports = {
               });
             });
 
-            console.log("ListSemestres - encontrados:", semestres.length); // 👈 debug
-
-            callback({
-              semestres: JSON.stringify(semestres), // devolvemos JSON válido
-              error: "",
-            });
+            callback({ semestres: JSON.stringify(semestres), error: "" });
           } catch (err) {
             console.error("ListSemestres error:", err);
-            callback({
-              semestres: "[]",
-              error: err.message,
-            });
+            callback({ semestres: "[]", error: err.message });
           }
         })();
       },
+
+      // -------------------------------------------------------------------
+      // ✅ 6.1 UPDATE SEMESTRE (FIX)
+      // -------------------------------------------------------------------
+      UpdateSemestre(args, callback) {
+        (async () => {
+          let done = false;
+          const callbackOnce = (payload) => {
+            if (done) return;
+            done = true;
+            callback(payload);
+          };
+
+          try {
+            const token = args?.token;
+            const semestreId = String(args?.semestreId ?? "").trim();
+            const nombreRaw = String(args?.nombreSemestre ?? "").trim();
+
+            if (!token) return callbackOnce({ message: "", error: "No hay token" });
+            if (!semestreId) return callbackOnce({ message: "", error: "semestreId es obligatorio" });
+
+            const permitido = /^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s\-\(\)]+$/;
+
+            if (!nombreRaw) return callbackOnce({ message: "", error: "El nombre del semestre es obligatorio" });
+            if (nombreRaw.length > 30) return callbackOnce({ message: "", error: "Máximo 30 caracteres" });
+            if (!permitido.test(nombreRaw)) {
+              return callbackOnce({
+                message: "",
+                error: "Nombre inválido. Solo letras, números, espacios, (), y guion -",
+              });
+            }
+
+            const { uid } = await verifyToken(token);
+
+            await userDoc(uid)
+              .collection("semestres")
+              .doc(semestreId)
+              .update({ nombreSemestre: nombreRaw });
+
+            return callbackOnce({ message: "Semestre actualizado", error: "" });
+          } catch (err) {
+            console.error("UpdateSemestre error:", err);
+            return callbackOnce({ message: "", error: err?.message || "Error actualizando semestre" });
+          }
+        })();
+      },
+
+      // -------------------------------------------------------------------
+      // ✅ 6.2 DELETE SEMESTRE (FIX) - borra materias y luego el semestre
+      // -------------------------------------------------------------------
+      DeleteSemestre(args, callback) {
+        (async () => {
+          let done = false;
+          const callbackOnce = (payload) => {
+            if (done) return;
+            done = true;
+            callback(payload);
+          };
+
+          try {
+            const token = args?.token;
+            const semestreId = String(args?.semestreId ?? "").trim();
+
+            if (!token) return callbackOnce({ message: "", error: "No hay token" });
+            if (!semestreId) return callbackOnce({ message: "", error: "semestreId es obligatorio" });
+
+            const { uid } = await verifyToken(token);
+
+            const semestreRef = userDoc(uid).collection("semestres").doc(semestreId);
+
+            // ✅ borrar materias
+            await deleteCollection(semestreRef.collection("materias"), 50);
+
+            // ✅ borrar semestre
+            await semestreRef.delete();
+
+            return callbackOnce({ message: "Semestre eliminado correctamente", error: "" });
+          } catch (err) {
+            console.error("DeleteSemestre error:", err);
+            return callbackOnce({ message: "", error: err?.message || "Error eliminando semestre" });
+          }
+        })();
+      },
+
       // -------------------------------------------------------------------
       // 7. CREAR MATERIA
       // -------------------------------------------------------------------
@@ -342,15 +390,9 @@ module.exports = {
             const nombre = String(nombreMateria ?? "").trim();
             const creditosNum = Number(creditos);
 
-            if (!semestreId) {
-              return callback({ message: "", error: "semestreId es obligatorio" });
-            }
-            if (!nombre) {
-              return callback({ message: "", error: "El nombre de la materia es obligatorio" });
-            }
-            if (nombre.length > 30) {
-              return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
-            }
+            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
+            if (!nombre) return callback({ message: "", error: "El nombre de la materia es obligatorio" });
+            if (nombre.length > 30) return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
             if (!Number.isInteger(creditosNum) || creditosNum < 1 || creditosNum > 10) {
               return callback({ message: "", error: "Los créditos deben estar entre 1 y 10" });
             }
@@ -367,11 +409,7 @@ module.exports = {
                 nota3: 0,
               });
 
-            callback({
-              message: "Materia creada",
-              materiaId: matRef.id,
-              error: "",
-            });
+            callback({ message: "Materia creada", materiaId: matRef.id, error: "" });
           } catch (err) {
             console.error("CreateMateria error:", err);
             callback({ message: "", error: err.message || "Error creando materia" });
@@ -380,7 +418,7 @@ module.exports = {
       },
 
       // -------------------------------------------------------------------
-      // 8. LISTAR MATERIAS DE UN SEMESTRE
+      // 8. LISTAR MATERIAS
       // -------------------------------------------------------------------
       ListMaterias(args, callback) {
         (async () => {
@@ -403,20 +441,20 @@ module.exports = {
                 creditos: d.creditos,
                 nota1: d.nota1,
                 nota2: d.nota2,
-                nota3: d.nota3
+                nota3: d.nota3,
               });
             });
 
-            callback({ materias: JSON.stringify(materias) });
+            callback({ materias: JSON.stringify(materias), error: "" });
           } catch (err) {
             console.error("ListMaterias error:", err);
-            callback({ error: err.message });
+            callback({ materias: "[]", error: err.message });
           }
         })();
       },
 
       // -------------------------------------------------------------------
-      // 9. OBTENER UNA MATERIA
+      // 9. OBTENER MATERIA
       // -------------------------------------------------------------------
       GetMateria(args, callback) {
         (async () => {
@@ -431,9 +469,7 @@ module.exports = {
               .doc(materiaId)
               .get();
 
-            if (!doc.exists) {
-              return callback({ error: "Materia no encontrada" });
-            }
+            if (!doc.exists) return callback({ error: "Materia no encontrada" });
 
             const d = doc.data();
             callback({
@@ -442,7 +478,8 @@ module.exports = {
               creditos: d.creditos,
               nota1: d.nota1,
               nota2: d.nota2,
-              nota3: d.nota3
+              nota3: d.nota3,
+              error: "",
             });
           } catch (err) {
             console.error("GetMateria error:", err);
@@ -452,7 +489,7 @@ module.exports = {
       },
 
       // -------------------------------------------------------------------
-      // 10. EDITAR MATERIA
+      // 10. ACTUALIZAR MATERIA
       // -------------------------------------------------------------------
       UpdateMateria(args, callback) {
         (async () => {
@@ -460,24 +497,15 @@ module.exports = {
             const { token, semestreId, materiaId, nombreMateria, creditos } = args;
             const { uid } = await verifyToken(token);
 
-            if (!semestreId) {
-              return callback({ message: "", error: "semestreId es obligatorio" });
-            }
-            if (!materiaId) {
-              return callback({ message: "", error: "materiaId es obligatorio" });
-            }
+            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
+            if (!materiaId) return callback({ message: "", error: "materiaId es obligatorio" });
 
-            // ✅ Si el frontend manda vacío o undefined, NO guardes NaN ni strings vacíos
             const fields = {};
 
             if (nombreMateria !== undefined) {
               const nombre = String(nombreMateria ?? "").trim();
-              if (!nombre) {
-                return callback({ message: "", error: "El nombre de la materia es obligatorio" });
-              }
-              if (nombre.length > 30) {
-                return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
-              }
+              if (!nombre) return callback({ message: "", error: "El nombre de la materia es obligatorio" });
+              if (nombre.length > 30) return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
               fields.nombreMateria = nombre;
             }
 
@@ -508,7 +536,6 @@ module.exports = {
         })();
       },
 
-
       // -------------------------------------------------------------------
       // 11. BORRAR MATERIA
       // -------------------------------------------------------------------
@@ -525,17 +552,16 @@ module.exports = {
               .doc(materiaId)
               .delete();
 
-            callback({ message: "Materia eliminada" });
+            callback({ message: "Materia eliminada", error: "" });
           } catch (err) {
             console.error("DeleteMateria error:", err);
-            callback({ error: err.message });
+            callback({ message: "", error: err.message });
           }
         })();
       },
 
       // -------------------------------------------------------------------
       // 12. REGISTRAR / MODIFICAR NOTA
-      // (la misma operación sirve para registrar o modificar)
       // -------------------------------------------------------------------
       RegistrarNota(args, callback) {
         (async () => {
@@ -543,27 +569,25 @@ module.exports = {
             const { token, semestreId, materiaId, corte, nota } = args;
             const { uid } = await verifyToken(token);
 
-            const campo = "nota" + corte; // 1, 2 o 3
+            const campo = "nota" + corte;
 
             await userDoc(uid)
               .collection("semestres")
               .doc(semestreId)
               .collection("materias")
               .doc(materiaId)
-              .update({
-                [campo]: Number(nota)
-              });
+              .update({ [campo]: Number(nota) });
 
-            callback({ message: "Nota registrada" });
+            callback({ message: "Nota registrada", error: "" });
           } catch (err) {
             console.error("RegistrarNota error:", err);
-            callback({ error: err.message });
+            callback({ message: "", error: err.message });
           }
         })();
       },
 
       // -------------------------------------------------------------------
-      // 13. ELIMINAR NOTA (la ponemos en 0)
+      // 13. ELIMINAR NOTA
       // -------------------------------------------------------------------
       EliminarNota(args, callback) {
         (async () => {
@@ -578,23 +602,21 @@ module.exports = {
               .doc(semestreId)
               .collection("materias")
               .doc(materiaId)
-              .update({
-                [campo]: 0
-              });
+              .update({ [campo]: 0 });
 
-            callback({ message: "Nota eliminada (puesta en 0)" });
+            callback({ message: "Nota eliminada (puesta en 0)", error: "" });
           } catch (err) {
             console.error("EliminarNota error:", err);
-            callback({ error: err.message });
+            callback({ message: "", error: err.message });
           }
         })();
       },
+
       // ------------------------------------------------
-      //  A. Solicitar reset de contraseña (envía correo)
+      // A. RequestPasswordReset
       // ------------------------------------------------
       RequestPasswordReset(args, callback) {
         (async () => {
-          // ✅ asegurar callback solo una vez
           let done = false;
           const callbackOnce = (payload) => {
             if (done) return;
@@ -609,31 +631,21 @@ module.exports = {
             const correoRaw = args?.correo ?? "";
             const correo = String(correoRaw).trim().toLowerCase();
 
-            if (!correo) {
-              return callbackOnce({
-                message: "",
-                error: "El correo es obligatorio",
-              });
-            }
+            if (!correo) return callbackOnce({ message: "", error: "El correo es obligatorio" });
 
-            // Buscar usuario
             const snapshot = await db
               .collection(USERS_COLLECTION)
               .where("correo", "==", correo)
               .limit(1)
               .get();
 
-            // 🔐 Seguridad: siempre responder igual
-            if (snapshot.empty) {
-              return callbackOnce({ message: GENERIC_MSG, error: "" });
-            }
+            if (snapshot.empty) return callbackOnce({ message: GENERIC_MSG, error: "" });
 
-            const userDoc = snapshot.docs[0];
-            const uid = userDoc.id;
+            const userDocSnap = snapshot.docs[0];
+            const uid = userDocSnap.id;
 
-            // Crear token
             const token = uuidv4();
-            const expiresAt = Date.now() + 1000 * 60 * 30; // 30 min
+            const expiresAt = Date.now() + 1000 * 60 * 30;
 
             await db.collection("passwordResets").doc(token).set({
               uid,
@@ -643,58 +655,39 @@ module.exports = {
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            // URL de reset (PROD → Railway env var)
             const resetBaseUrl =
-              process.env.RESET_BASE_URL ||
-              "http://localhost:5173/reset-password";
+              process.env.RESET_BASE_URL || "http://localhost:5173/reset-password";
 
             const resetLink = `${resetBaseUrl}?token=${encodeURIComponent(token)}`;
 
             const html = `
-        <p>Hola,</p>
-        <p>Has solicitado restablecer tu contraseña en <b>Notas Universitarias</b>.</p>
-        <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
-        <p><a href="${resetLink}">${resetLink}</a></p>
-        <p>Este enlace es válido por 30 minutos.</p>
-        <p>Si tú no solicitaste este cambio, puedes ignorar este mensaje.</p>
-      `;
+              <p>Hola,</p>
+              <p>Has solicitado restablecer tu contraseña en <b>Notas Universitarias</b>.</p>
+              <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
+              <p><a href="${resetLink}">${resetLink}</a></p>
+              <p>Este enlace es válido por 30 minutos.</p>
+              <p>Si tú no solicitaste este cambio, puedes ignorar este mensaje.</p>
+            `;
 
-            // 🚀 ENVIAR CORREO SIN BLOQUEAR SOAP
-            sendMail(
-              correo,
-              "Restablecer contraseña - Notas Universitarias",
-              html
-            )
-              .then(() => {
-                console.log("✅ Email de recuperación enviado a:", correo);
-              })
-              .catch((mailErr) => {
-                console.error(
-                  "❌ Error enviando email (SMTP):",
-                  mailErr?.message || mailErr
-                );
-              });
+            sendMail(correo, "Restablecer contraseña - Notas Universitarias", html)
+              .then(() => console.log("✅ Email enviado a:", correo))
+              .catch((mailErr) =>
+                console.error("❌ Error enviando email (SMTP):", mailErr?.message || mailErr)
+              );
 
-            // ✅ responder inmediatamente al frontend
             return callbackOnce({ message: GENERIC_MSG, error: "" });
-
           } catch (err) {
             console.error("RequestPasswordReset error:", err);
-            return callbackOnce({
-              message: "",
-              error: "Error procesando la solicitud",
-            });
+            return callbackOnce({ message: "", error: "Error procesando la solicitud" });
           }
         })();
       },
 
-
       // ------------------------------------------------
-      //  B. Confirmar reset (cambiar contraseña)
+      // B. ConfirmPasswordReset
       // ------------------------------------------------
       ConfirmPasswordReset(args, callback) {
         (async () => {
-          // ✅ asegurar callback solo una vez
           let done = false;
           const callbackOnce = (payload) => {
             if (done) return;
@@ -703,75 +696,40 @@ module.exports = {
           };
 
           try {
-            const tokenRaw = args?.token ?? "";
-            const passRaw = args?.nuevaContraseña ?? "";
-
-            const token = String(tokenRaw).trim();
-            const nuevaContraseña = String(passRaw);
+            const token = String(args?.token ?? "").trim();
+            const nuevaContraseña = String(args?.nuevaContraseña ?? "");
 
             if (!token || !nuevaContraseña) {
-              return callbackOnce({
-                message: "",
-                error: "Token y nueva contraseña son obligatorios",
-              });
+              return callbackOnce({ message: "", error: "Token y nueva contraseña son obligatorios" });
             }
-
             if (nuevaContraseña.length < 6) {
-              return callbackOnce({
-                message: "",
-                error: "La contraseña debe tener al menos 6 caracteres",
-              });
+              return callbackOnce({ message: "", error: "La contraseña debe tener al menos 6 caracteres" });
             }
 
-            // Buscar el token
             const resetRef = db.collection("passwordResets").doc(token);
             const resetDoc = await resetRef.get();
 
             if (!resetDoc.exists) {
-              return callbackOnce({
-                message: "",
-                error: "Token inválido o ya utilizado",
-              });
+              return callbackOnce({ message: "", error: "Token inválido o ya utilizado" });
             }
 
             const data = resetDoc.data() || {};
+            if (data.used) return callbackOnce({ message: "", error: "Token ya utilizado" });
 
-            if (data.used) {
-              return callbackOnce({
-                message: "",
-                error: "Token ya utilizado",
-              });
-            }
-
-            // Expirado
             if (Date.now() > Number(data.expiresAt || 0)) {
-              // ✅ opcional: marcar como usado para “matar” el token expirado
               try {
                 await resetRef.update({
                   used: true,
                   usedAt: admin.firestore.FieldValue.serverTimestamp(),
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                   reason: "expired",
                 });
-              } catch (e) {
-                console.warn("No se pudo marcar token expirado:", e?.message || e);
-              }
-
-              return callbackOnce({
-                message: "",
-                error: "Token expirado, solicita uno nuevo",
-              });
+              } catch {}
+              return callbackOnce({ message: "", error: "Token expirado, solicita uno nuevo" });
             }
 
             const uid = data.uid;
-            if (!uid) {
-              return callbackOnce({
-                message: "",
-                error: "Token inválido (sin usuario asociado)",
-              });
-            }
+            if (!uid) return callbackOnce({ message: "", error: "Token inválido (sin usuario asociado)" });
 
-            // Actualizar contraseña del usuario
             const hash = await bcrypt.hash(nuevaContraseña, 10);
 
             await db.collection(USERS_COLLECTION).doc(uid).update({
@@ -779,69 +737,18 @@ module.exports = {
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            // Marcar token como usado
             await resetRef.update({
               used: true,
               usedAt: admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            return callbackOnce({
-              message: "Contraseña actualizada correctamente",
-              error: "",
-            });
+            return callbackOnce({ message: "Contraseña actualizada correctamente", error: "" });
           } catch (err) {
             console.error("ConfirmPasswordReset error:", err);
-            return callbackOnce({
-              message: "",
-              error: "Error actualizando la contraseña",
-            });
+            return callbackOnce({ message: "", error: "Error actualizando la contraseña" });
           }
         })();
       },
-
-
-      UpdateSemestre(args, callback) {
-        (async () => {
-          try {
-            const { token, semestreId, nombreSemestre } = args;
-            const { uid } = await verifyToken(token);
-
-            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
-            if (!nombreSemestre) return callback({ message: "", error: "nombreSemestre es obligatorio" });
-
-            await userDoc(uid)
-              .collection("semestres")
-              .doc(semestreId)
-              .update({ nombreSemestre });
-
-            callback({ message: "Semestre actualizado correctamente", error: "" });
-          } catch (err) {
-            console.error("UpdateSemestre error:", err);
-            callback({ message: "", error: err.message });
-          }
-        })();
-      },
-      DeleteSemestre(args, callback) {
-        (async () => {
-          try {
-            const { token, semestreId } = args;
-            const { uid } = await verifyToken(token);
-
-            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
-
-            const semestreRef = userDoc(uid).collection("semestres").doc(semestreId);
-
-            // Borra semestre y TODO lo de adentro (materias)
-            await admin.firestore().recursiveDelete(semestreRef);
-
-            callback({ message: "Semestre eliminado correctamente", error: "" });
-          } catch (err) {
-            console.error("DeleteSemestre error:", err);
-            callback({ message: "", error: err.message });
-          }
-        })();
-      },
-    }
-  }
+    },
+  },
 };
