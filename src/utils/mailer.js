@@ -4,57 +4,54 @@ const nodemailer = require("nodemailer");
 function getEmailConfig() {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT || 0);
-  const secure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true";
+  const secure = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  let pass = process.env.SMTP_PASS;
   const from = process.env.MAIL_FROM;
+
+  // Normaliza el app password (quita espacios)
+  if (pass) pass = String(pass).replace(/\s+/g, "");
 
   if (!host || !port || !user || !pass || !from) return null;
 
   return { host, port, secure, user, pass, from };
 }
 
-function buildTransporter(cfg) {
-  return nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure, // 465 => true, 587 => false
-    auth: { user: cfg.user, pass: cfg.pass },
-
-    // 🔥 IMPORTANTES para evitar “se queda pegado” / timeouts eternos
-    connectionTimeout: 10000, // 10s
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-
-    // Si usas 587 normalmente necesitas STARTTLS:
-    requireTLS: !cfg.secure,
-
-    // OJO: NO recomiendo dejar esto así siempre.
-    // Solo úsalo si tu proveedor tiene problemas de certificados.
-    // tls: { rejectUnauthorized: false },
-  });
-}
-
 async function sendMail(to, subject, html) {
   const cfg = getEmailConfig();
 
   if (!cfg) {
-    console.warn("⚠️ SMTP no configurado. (Faltan ENV SMTP_*/MAIL_FROM)");
-    return { ok: false, reason: "SMTP_NOT_CONFIGURED" };
+    console.warn("⚠️ SMTP no configurado. No se enviará correo.");
+    return;
   }
 
-  const transporter = buildTransporter(cfg);
+  // ✅ Para Railway + Gmail: recomendado 587 + secure:false (STARTTLS)
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure, // false en 587, true SOLO en 465
+    auth: {
+      user: cfg.user,
+      pass: cfg.pass,
+    },
+    // Timeouts para que no “cuelgue”
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
 
-  // ✅ Verifica conexión antes de enviar (para detectar rápido el problema)
+    // STARTTLS
+    requireTLS: cfg.port === 587,
+    tls: {
+      minVersion: "TLSv1.2",
+    },
+  });
+
+  // ✅ Verificar pero NO romper tu flujo si falla (solo log)
   try {
     await transporter.verify();
-  } catch (err) {
-    console.error(
-      "❌ SMTP verify falló:",
-      err?.code || "",
-      err?.message || err
-    );
-    return { ok: false, reason: "SMTP_VERIFY_FAILED", error: err?.message || String(err) };
+  } catch (e) {
+    console.error("❌ SMTP verify falló:", e?.code || e?.message || e);
+    // NO return aquí; igual intentamos sendMail (a veces verify falla y sendMail pasa)
   }
 
   try {
@@ -65,15 +62,10 @@ async function sendMail(to, subject, html) {
       html,
     });
 
-    console.log("✅ Email enviado:", { to, messageId: info.messageId });
-    return { ok: true, messageId: info.messageId };
-  } catch (err) {
-    console.error(
-      "❌ SMTP sendMail falló:",
-      err?.code || "",
-      err?.message || err
-    );
-    return { ok: false, reason: "SMTP_SEND_FAILED", error: err?.message || String(err) };
+    console.log("✅ Email enviado:", info?.messageId || "(sin messageId)");
+  } catch (e) {
+    console.error("❌ SMTP sendMail falló:", e?.code || e?.message || e);
+    // no lanzamos error para no tumbar el SOAP
   }
 }
 
