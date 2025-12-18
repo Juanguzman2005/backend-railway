@@ -564,16 +564,20 @@ module.exports = {
             const correo = String(correoRaw).trim().toLowerCase();
 
             if (!correo) {
-              return callbackOnce({ message: "", error: "El correo es obligatorio" });
+              return callbackOnce({
+                message: "",
+                error: "El correo es obligatorio",
+              });
             }
 
+            // Buscar usuario
             const snapshot = await db
               .collection(USERS_COLLECTION)
               .where("correo", "==", correo)
               .limit(1)
               .get();
 
-            // ✅ por seguridad: siempre respondemos lo mismo
+            // 🔐 Seguridad: siempre responder igual
             if (snapshot.empty) {
               return callbackOnce({ message: GENERIC_MSG, error: "" });
             }
@@ -581,11 +585,9 @@ module.exports = {
             const userDoc = snapshot.docs[0];
             const uid = userDoc.id;
 
-            // Crear token único
+            // Crear token
             const token = uuidv4();
-
-            // 30 minutos
-            const expiresAt = Date.now() + 1000 * 60 * 30;
+            const expiresAt = Date.now() + 1000 * 60 * 30; // 30 min
 
             await db.collection("passwordResets").doc(token).set({
               uid,
@@ -595,9 +597,10 @@ module.exports = {
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            // Construir link (✅ en prod pon RESET_BASE_URL en Railway)
+            // URL de reset (PROD → Railway env var)
             const resetBaseUrl =
-              process.env.RESET_BASE_URL || "http://localhost:5173/reset-password";
+              process.env.RESET_BASE_URL ||
+              "http://localhost:5173/reset-password";
 
             const resetLink = `${resetBaseUrl}?token=${encodeURIComponent(token)}`;
 
@@ -606,24 +609,39 @@ module.exports = {
         <p>Has solicitado restablecer tu contraseña en <b>Notas Universitarias</b>.</p>
         <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
         <p><a href="${resetLink}">${resetLink}</a></p>
-        <p>Este enlace es válido por 30 minutos. Si tú no solicitaste este cambio, puedes ignorar este mensaje.</p>
+        <p>Este enlace es válido por 30 minutos.</p>
+        <p>Si tú no solicitaste este cambio, puedes ignorar este mensaje.</p>
       `;
 
-            // ✅ NO dejar colgada la request si el SMTP falla
-            try {
-              await sendMail(correo, "Restablecer contraseña - Notas Universitarias", html);
-            } catch (mailErr) {
-              console.error("❌ Error enviando correo (SMTP):", mailErr?.message || mailErr);
-              // NO devolvemos error al usuario para no filtrar y para no frenar el flujo
-            }
+            // 🚀 ENVIAR CORREO SIN BLOQUEAR SOAP
+            sendMail(
+              correo,
+              "Restablecer contraseña - Notas Universitarias",
+              html
+            )
+              .then(() => {
+                console.log("✅ Email de recuperación enviado a:", correo);
+              })
+              .catch((mailErr) => {
+                console.error(
+                  "❌ Error enviando email (SMTP):",
+                  mailErr?.message || mailErr
+                );
+              });
 
+            // ✅ responder inmediatamente al frontend
             return callbackOnce({ message: GENERIC_MSG, error: "" });
+
           } catch (err) {
             console.error("RequestPasswordReset error:", err);
-            return callbackOnce({ message: "", error: "Error procesando la solicitud" });
+            return callbackOnce({
+              message: "",
+              error: "Error procesando la solicitud",
+            });
           }
         })();
       },
+
 
       // ------------------------------------------------
       //  B. Confirmar reset (cambiar contraseña)

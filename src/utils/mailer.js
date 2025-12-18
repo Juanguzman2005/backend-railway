@@ -2,7 +2,6 @@
 const nodemailer = require("nodemailer");
 
 let cachedTransporter = null;
-let cachedCfgKey = null;
 
 function getEmailConfig() {
   const host = process.env.SMTP_HOST;
@@ -25,11 +24,7 @@ function getEmailConfig() {
 }
 
 function getTransporter(cfg) {
-  const key = `${cfg.host}|${cfg.port}|${cfg.secure}|${cfg.user}`;
-
-  if (cachedTransporter && cachedCfgKey === key) return cachedTransporter;
-
-  cachedCfgKey = key;
+  if (cachedTransporter) return cachedTransporter;
 
   cachedTransporter = nodemailer.createTransport({
     host: cfg.host,
@@ -37,40 +32,39 @@ function getTransporter(cfg) {
     secure: cfg.secure,
     auth: { user: cfg.user, pass: cfg.pass },
 
-    // ✅ IMPORTANTES para que no se quede colgado
-    connectionTimeout: 10_000, // 10s
-    greetingTimeout: 10_000,
-    socketTimeout: 15_000,     // 15s
+    // evita cuelgues
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 
   return cachedTransporter;
 }
 
+// Devuelve true si envió, false si no se pudo (pero sin romper el server)
 async function sendMail(to, subject, html) {
   const cfg = getEmailConfig();
+
   if (!cfg) {
-    console.warn("⚠️ SMTP no configurado. No se enviará correo.");
-    return { ok: false, skipped: true };
+    console.warn("⚠️ SMTP no configurado (SMTP_HOST/PORT/USER/PASS/MAIL_FROM). No se enviará correo.");
+    return false;
   }
 
-  const transporter = getTransporter(cfg);
+  try {
+    const transporter = getTransporter(cfg);
 
-  // ✅ Hard-timeout por si igual se cuelga
-  const HARD_TIMEOUT_MS = 18_000;
+    await transporter.sendMail({
+      from: cfg.from,
+      to,
+      subject,
+      html,
+    });
 
-  const sendPromise = transporter.sendMail({
-    from: cfg.from,
-    to,
-    subject,
-    html,
-  });
-
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("SMTP timeout")), HARD_TIMEOUT_MS)
-  );
-
-  await Promise.race([sendPromise, timeoutPromise]);
-  return { ok: true };
+    return true;
+  } catch (err) {
+    console.error("❌ Error SMTP sendMail:", err?.message || err);
+    return false;
+  }
 }
 
 module.exports = { sendMail };
