@@ -116,6 +116,29 @@
     <part name="error" type="xsd:string"/>
   </message>
 
+
+  <message name="UpdateSemestreRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+    <part name="nombreSemestre" type="xsd:string"/>
+  </message>
+
+  <message name="UpdateSemestreResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="DeleteSemestreRequest">
+    <part name="token" type="xsd:string"/>
+    <part name="semestreId" type="xsd:string"/>
+  </message>
+
+  <message name="DeleteSemestreResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+
   <!-- Materias -->
   <message name="CreateMateriaRequest">
     <part name="token" type="xsd:string"/>
@@ -254,6 +277,16 @@
       <output message="tns:ListSemestresResponse"/>
     </operation>
 
+    <operation name="UpdateSemestre">
+      <input message="tns:UpdateSemestreRequest"/>
+      <output message="tns:UpdateSemestreResponse"/>
+    </operation>
+
+    <operation name="DeleteSemestre">
+      <input message="tns:DeleteSemestreRequest"/>
+      <output message="tns:DeleteSemestreResponse"/>
+    </operation>
+
     <operation name="CreateMateria">
       <input message="tns:CreateMateriaRequest"/>
       <output message="tns:CreateMateriaResponse"/>
@@ -362,6 +395,27 @@
       <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
       <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
     </operation>
+
+   <operation name="UpdateSemestre">
+      <soap:operation soapAction="UpdateSemestre"/>
+      <input>
+        <soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+      </input>
+      <output>
+        <soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+      </output>
+    </operation>
+
+    <operation name="DeleteSemestre">
+      <soap:operation soapAction="DeleteSemestre"/>
+      <input>
+        <soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+      </input>
+      <output>
+        <soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+      </output>
+    </operation>
+
 
     <operation name="CreateMateria">
       <soap:operation soapAction="CreateMateria"/>

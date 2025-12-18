@@ -22,15 +22,19 @@ function userDoc(uid) {
   return db.collection(USERS_COLLECTION).doc(uid);
 }
 
-// ✅ Borra una subcolección por lotes
+/**
+ * ✅ Helper REAL para borrar documentos de una subcolección en batches
+ * (Firestore no borra subcolecciones automáticamente)
+ */
 async function deleteCollection(collectionRef, batchSize = 50) {
-  const snapshot = await collectionRef.limit(batchSize).get();
-  if (snapshot.empty) return;
+  const snap = await collectionRef.limit(batchSize).get();
+  if (snap.empty) return;
 
   const batch = db.batch();
-  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  snap.docs.forEach((d) => batch.delete(d.ref));
   await batch.commit();
 
+  // Repite hasta vaciar
   await deleteCollection(collectionRef, batchSize);
 }
 
@@ -116,7 +120,6 @@ module.exports = {
             }
 
             const token = jwt.sign({ uid: doc.id }, SECRET, { expiresIn: "4h" });
-
             callback({ token, error: "" });
           } catch (err) {
             console.error("Login error:", err);
@@ -203,6 +206,7 @@ module.exports = {
               correo: data.correo,
               carrera: data.carrera,
               semestre: data.semestre,
+              error: "",
             });
           } catch (err) {
             console.error("GetProfile error:", err);
@@ -212,7 +216,7 @@ module.exports = {
       },
 
       // -------------------------------------------------------------------
-      // 4. ACTUALIZAR PERFIL
+      // 4. UPDATE PROFILE
       // -------------------------------------------------------------------
       UpdateProfile(args, callback) {
         (async () => {
@@ -296,31 +300,25 @@ module.exports = {
       },
 
       // -------------------------------------------------------------------
-      // ✅ 6.1 UPDATE SEMESTRE (FIX)
+      // ✅ 7. UPDATE SEMESTRE (ARREGLADO)
       // -------------------------------------------------------------------
       UpdateSemestre(args, callback) {
         (async () => {
-          let done = false;
-          const callbackOnce = (payload) => {
-            if (done) return;
-            done = true;
-            callback(payload);
-          };
-
           try {
             const token = args?.token;
             const semestreId = String(args?.semestreId ?? "").trim();
             const nombreRaw = String(args?.nombreSemestre ?? "").trim();
 
-            if (!token) return callbackOnce({ message: "", error: "No hay token" });
-            if (!semestreId) return callbackOnce({ message: "", error: "semestreId es obligatorio" });
+            if (!token) return callback({ message: "", error: "No hay token" });
+            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
 
+            // Permite letras, números, espacios, tildes, ñ, (), guion -
             const permitido = /^[A-Za-zÁÉÍÓÚáéíóúÑñ0-9\s\-\(\)]+$/;
 
-            if (!nombreRaw) return callbackOnce({ message: "", error: "El nombre del semestre es obligatorio" });
-            if (nombreRaw.length > 30) return callbackOnce({ message: "", error: "Máximo 30 caracteres" });
+            if (!nombreRaw) return callback({ message: "", error: "El nombre del semestre es obligatorio" });
+            if (nombreRaw.length > 30) return callback({ message: "", error: "Máximo 30 caracteres" });
             if (!permitido.test(nombreRaw)) {
-              return callbackOnce({
+              return callback({
                 message: "",
                 error: "Nombre inválido. Solo letras, números, espacios, (), y guion -",
               });
@@ -333,47 +331,38 @@ module.exports = {
               .doc(semestreId)
               .update({ nombreSemestre: nombreRaw });
 
-            return callbackOnce({ message: "Semestre actualizado", error: "" });
+            callback({ message: "Semestre actualizado", error: "" });
           } catch (err) {
             console.error("UpdateSemestre error:", err);
-            return callbackOnce({ message: "", error: err?.message || "Error actualizando semestre" });
+            callback({ message: "", error: err.message || "Error actualizando semestre" });
           }
         })();
       },
 
       // -------------------------------------------------------------------
-      // ✅ 6.2 DELETE SEMESTRE (FIX) - borra materias y luego el semestre
+      // ✅ 8. DELETE SEMESTRE (ARREGLADO SIN recursiveDelete)
       // -------------------------------------------------------------------
       DeleteSemestre(args, callback) {
         (async () => {
-          let done = false;
-          const callbackOnce = (payload) => {
-            if (done) return;
-            done = true;
-            callback(payload);
-          };
-
           try {
-            const token = args?.token;
-            const semestreId = String(args?.semestreId ?? "").trim();
-
-            if (!token) return callbackOnce({ message: "", error: "No hay token" });
-            if (!semestreId) return callbackOnce({ message: "", error: "semestreId es obligatorio" });
+            const { token, semestreId } = args;
+            if (!token) return callback({ message: "", error: "No hay token" });
+            if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
 
             const { uid } = await verifyToken(token);
 
             const semestreRef = userDoc(uid).collection("semestres").doc(semestreId);
 
-            // ✅ borrar materias
+            // 1) borrar subcolección materias
             await deleteCollection(semestreRef.collection("materias"), 50);
 
-            // ✅ borrar semestre
+            // 2) borrar el doc semestre
             await semestreRef.delete();
 
-            return callbackOnce({ message: "Semestre eliminado correctamente", error: "" });
+            callback({ message: "Semestre eliminado correctamente", error: "" });
           } catch (err) {
             console.error("DeleteSemestre error:", err);
-            return callbackOnce({ message: "", error: err?.message || "Error eliminando semestre" });
+            callback({ message: "", error: err.message || "Error eliminando semestre" });
           }
         })();
       },
