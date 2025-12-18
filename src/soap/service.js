@@ -620,7 +620,9 @@ module.exports = {
             const correoRaw = args?.correo ?? "";
             const correo = String(correoRaw).trim().toLowerCase();
 
+            // ✅ máximo 40
             if (!correo) return callbackOnce({ message: "", error: "El correo es obligatorio" });
+            if (correo.length > 40) return callbackOnce({ message: "", error: "Máximo 40 caracteres" });
 
             const snapshot = await db
               .collection(USERS_COLLECTION)
@@ -628,10 +630,10 @@ module.exports = {
               .limit(1)
               .get();
 
+            // 🔐 Siempre misma respuesta
             if (snapshot.empty) return callbackOnce({ message: GENERIC_MSG, error: "" });
 
-            const userDocSnap = snapshot.docs[0];
-            const uid = userDocSnap.id;
+            const uid = snapshot.docs[0].id;
 
             const token = uuidv4();
             const expiresAt = Date.now() + 1000 * 60 * 30;
@@ -650,21 +652,24 @@ module.exports = {
             const resetLink = `${resetBaseUrl}?token=${encodeURIComponent(token)}`;
 
             const html = `
-              <p>Hola,</p>
-              <p>Has solicitado restablecer tu contraseña en <b>Notas Universitarias</b>.</p>
-              <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
-              <p><a href="${resetLink}">${resetLink}</a></p>
-              <p>Este enlace es válido por 30 minutos.</p>
-              <p>Si tú no solicitaste este cambio, puedes ignorar este mensaje.</p>
-            `;
+        <p>Hola,</p>
+        <p>Has solicitado restablecer tu contraseña en <b>Notas Universitarias</b>.</p>
+        <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
+        <p><a href="${resetLink}">${resetLink}</a></p>
+        <p>Este enlace es válido por 30 minutos.</p>
+      `;
 
-            sendMail(correo, "Restablecer contraseña - Notas Universitarias", html)
-              .then(() => console.log("✅ Email enviado a:", correo))
-              .catch((mailErr) =>
-                console.error("❌ Error enviando email (SMTP):", mailErr?.message || mailErr)
-              );
+            // ✅ Intentar enviar, pero JAMÁS romper la respuesta SOAP
+            try {
+              const r = await sendMail(correo, "Restablecer contraseña - Notas Universitarias", html);
+              if (r?.ok) console.log("✅ Email enviado:", correo);
+              else console.warn("⚠️ Email NO enviado (skipped):", correo);
+            } catch (mailErr) {
+              console.error("❌ SMTP falló:", mailErr?.message || mailErr);
+            }
 
             return callbackOnce({ message: GENERIC_MSG, error: "" });
+
           } catch (err) {
             console.error("RequestPasswordReset error:", err);
             return callbackOnce({ message: "", error: "Error procesando la solicitud" });
@@ -712,7 +717,7 @@ module.exports = {
                   usedAt: admin.firestore.FieldValue.serverTimestamp(),
                   reason: "expired",
                 });
-              } catch {}
+              } catch { }
               return callbackOnce({ message: "", error: "Token expirado, solicita uno nuevo" });
             }
 
