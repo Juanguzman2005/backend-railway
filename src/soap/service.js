@@ -339,25 +339,42 @@ module.exports = {
             const { token, semestreId, nombreMateria, creditos } = args;
             const { uid } = await verifyToken(token);
 
+            const nombre = String(nombreMateria ?? "").trim();
+            const creditosNum = Number(creditos);
+
+            if (!semestreId) {
+              return callback({ message: "", error: "semestreId es obligatorio" });
+            }
+            if (!nombre) {
+              return callback({ message: "", error: "El nombre de la materia es obligatorio" });
+            }
+            if (nombre.length > 30) {
+              return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
+            }
+            if (!Number.isInteger(creditosNum) || creditosNum < 1 || creditosNum > 10) {
+              return callback({ message: "", error: "Los créditos deben estar entre 1 y 10" });
+            }
+
             const matRef = await userDoc(uid)
               .collection("semestres")
               .doc(semestreId)
               .collection("materias")
               .add({
-                nombreMateria,
-                creditos: Number(creditos),
+                nombreMateria: nombre,
+                creditos: creditosNum,
                 nota1: 0,
                 nota2: 0,
-                nota3: 0
+                nota3: 0,
               });
 
             callback({
               message: "Materia creada",
-              materiaId: matRef.id
+              materiaId: matRef.id,
+              error: "",
             });
           } catch (err) {
             console.error("CreateMateria error:", err);
-            callback({ error: err.message });
+            callback({ message: "", error: err.message || "Error creando materia" });
           }
         })();
       },
@@ -440,13 +457,41 @@ module.exports = {
       UpdateMateria(args, callback) {
         (async () => {
           try {
-            const { token, semestreId, materiaId, nombreMateria, creditos } =
-              args;
+            const { token, semestreId, materiaId, nombreMateria, creditos } = args;
             const { uid } = await verifyToken(token);
 
+            if (!semestreId) {
+              return callback({ message: "", error: "semestreId es obligatorio" });
+            }
+            if (!materiaId) {
+              return callback({ message: "", error: "materiaId es obligatorio" });
+            }
+
+            // ✅ Si el frontend manda vacío o undefined, NO guardes NaN ni strings vacíos
             const fields = {};
-            if (nombreMateria !== undefined) fields.nombreMateria = nombreMateria;
-            if (creditos !== undefined) fields.creditos = Number(creditos);
+
+            if (nombreMateria !== undefined) {
+              const nombre = String(nombreMateria ?? "").trim();
+              if (!nombre) {
+                return callback({ message: "", error: "El nombre de la materia es obligatorio" });
+              }
+              if (nombre.length > 30) {
+                return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
+              }
+              fields.nombreMateria = nombre;
+            }
+
+            if (creditos !== undefined) {
+              const creditosNum = Number(creditos);
+              if (!Number.isInteger(creditosNum) || creditosNum < 1 || creditosNum > 10) {
+                return callback({ message: "", error: "Los créditos deben estar entre 1 y 10" });
+              }
+              fields.creditos = creditosNum;
+            }
+
+            if (Object.keys(fields).length === 0) {
+              return callback({ message: "", error: "No hay campos para actualizar" });
+            }
 
             await userDoc(uid)
               .collection("semestres")
@@ -455,13 +500,14 @@ module.exports = {
               .doc(materiaId)
               .update(fields);
 
-            callback({ message: "Materia actualizada" });
+            callback({ message: "Materia actualizada", error: "" });
           } catch (err) {
             console.error("UpdateMateria error:", err);
-            callback({ error: err.message });
+            callback({ message: "", error: err.message || "Error actualizando materia" });
           }
         })();
       },
+
 
       // -------------------------------------------------------------------
       // 11. BORRAR MATERIA
