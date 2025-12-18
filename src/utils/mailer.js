@@ -14,38 +14,67 @@ function getEmailConfig() {
   return { host, port, secure, user, pass, from };
 }
 
+function buildTransporter(cfg) {
+  return nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure, // 465 => true, 587 => false
+    auth: { user: cfg.user, pass: cfg.pass },
+
+    // 🔥 IMPORTANTES para evitar “se queda pegado” / timeouts eternos
+    connectionTimeout: 10000, // 10s
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+
+    // Si usas 587 normalmente necesitas STARTTLS:
+    requireTLS: !cfg.secure,
+
+    // OJO: NO recomiendo dejar esto así siempre.
+    // Solo úsalo si tu proveedor tiene problemas de certificados.
+    // tls: { rejectUnauthorized: false },
+  });
+}
+
 async function sendMail(to, subject, html) {
   const cfg = getEmailConfig();
 
-  // ✅ No rompe el server si no hay SMTP
   if (!cfg) {
-    console.warn("⚠️ SMTP no configurado. No se enviará correo.");
-    return { ok: false, skipped: true };
+    console.warn("⚠️ SMTP no configurado. (Faltan ENV SMTP_*/MAIL_FROM)");
+    return { ok: false, reason: "SMTP_NOT_CONFIGURED" };
   }
 
-  const transporter = nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure,
-    auth: { user: cfg.user, pass: cfg.pass },
+  const transporter = buildTransporter(cfg);
 
-    // ✅ evita colgadas eternas
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
+  // ✅ Verifica conexión antes de enviar (para detectar rápido el problema)
+  try {
+    await transporter.verify();
+  } catch (err) {
+    console.error(
+      "❌ SMTP verify falló:",
+      err?.code || "",
+      err?.message || err
+    );
+    return { ok: false, reason: "SMTP_VERIFY_FAILED", error: err?.message || String(err) };
+  }
 
-  // ✅ valida conexión antes de enviar
-  await transporter.verify();
+  try {
+    const info = await transporter.sendMail({
+      from: cfg.from,
+      to,
+      subject,
+      html,
+    });
 
-  const info = await transporter.sendMail({
-    from: cfg.from,
-    to,
-    subject,
-    html,
-  });
-
-  return { ok: true, messageId: info.messageId };
+    console.log("✅ Email enviado:", { to, messageId: info.messageId });
+    return { ok: true, messageId: info.messageId };
+  } catch (err) {
+    console.error(
+      "❌ SMTP sendMail falló:",
+      err?.code || "",
+      err?.message || err
+    );
+    return { ok: false, reason: "SMTP_SEND_FAILED", error: err?.message || String(err) };
+  }
 }
 
 module.exports = { sendMail };
