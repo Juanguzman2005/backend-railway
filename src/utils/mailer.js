@@ -7,7 +7,12 @@ async function sendMail(to, subject, html) {
   // ✅ RESEND (recomendado)
   if (provider === "resend") {
     const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.MAIL_FROM || "Notas Universitarias <onboarding@resend.dev>";
+    const fromEnv = process.env.MAIL_FROM || "";
+    const from =
+      fromEnv.includes("@gmail.com")
+        ? "Notas Universitarias <onboarding@resend.dev>"
+        : fromEnv || "Notas Universitarias <onboarding@resend.dev>";
+
     if (!apiKey) {
       console.warn("⚠️ RESEND_API_KEY no configurado. Email NO enviado (skipped):", to);
       return;
