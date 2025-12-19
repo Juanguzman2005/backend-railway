@@ -1,71 +1,67 @@
 // src/utils/mailer.js
 const nodemailer = require("nodemailer");
 
-function getEmailConfig() {
+async function sendMail(to, subject, html) {
+  const provider = (process.env.EMAIL_PROVIDER || "").toLowerCase();
+
+  // ✅ RESEND (recomendado)
+  if (provider === "resend") {
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.MAIL_FROM || "Notas Universitarias <onboarding@resend.dev>";
+    if (!apiKey) {
+      console.warn("⚠️ RESEND_API_KEY no configurado. Email NO enviado (skipped):", to);
+      return;
+    }
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to, subject, html }),
+    });
+
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      console.error("❌ Resend falló:", res.status, t);
+      return;
+    }
+
+    console.log("✅ Email enviado (Resend) a:", to);
+    return;
+  }
+
+  // ✅ SMTP (fallback si algún día lo vuelves a usar)
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT || 0);
   const secure = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
   const user = process.env.SMTP_USER;
-  let pass = process.env.SMTP_PASS;
+  const pass = String(process.env.SMTP_PASS || "").replace(/\s+/g, "");
   const from = process.env.MAIL_FROM;
 
-  // Normaliza el app password (quita espacios)
-  if (pass) pass = String(pass).replace(/\s+/g, "");
-
-  if (!host || !port || !user || !pass || !from) return null;
-
-  return { host, port, secure, user, pass, from };
-}
-
-async function sendMail(to, subject, html) {
-  const cfg = getEmailConfig();
-
-  if (!cfg) {
-    console.warn("⚠️ SMTP no configurado. No se enviará correo.");
+  if (!host || !port || !user || !pass || !from) {
+    console.warn("⚠️ SMTP no configurado. Email NO enviado (skipped):", to);
     return;
   }
 
-  // ✅ Para Railway + Gmail: recomendado 587 + secure:false (STARTTLS)
   const transporter = nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.secure, // false en 587, true SOLO en 465
-    auth: {
-      user: cfg.user,
-      pass: cfg.pass,
-    },
-    // Timeouts para que no “cuelgue”
+    host,
+    port,
+    secure,
+    auth: { user, pass },
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000,
-
-    // STARTTLS
-    requireTLS: cfg.port === 587,
-    tls: {
-      minVersion: "TLSv1.2",
-    },
+    requireTLS: port === 587,
+    tls: { minVersion: "TLSv1.2" },
   });
 
-  // ✅ Verificar pero NO romper tu flujo si falla (solo log)
   try {
-    await transporter.verify();
-  } catch (e) {
-    console.error("❌ SMTP verify falló:", e?.code || e?.message || e);
-    // NO return aquí; igual intentamos sendMail (a veces verify falla y sendMail pasa)
-  }
-
-  try {
-    const info = await transporter.sendMail({
-      from: cfg.from,
-      to,
-      subject,
-      html,
-    });
-
-    console.log("✅ Email enviado:", info?.messageId || "(sin messageId)");
+    await transporter.sendMail({ from, to, subject, html });
+    console.log("✅ Email enviado (SMTP) a:", to);
   } catch (e) {
     console.error("❌ SMTP sendMail falló:", e?.code || e?.message || e);
-    // no lanzamos error para no tumbar el SOAP
   }
 }
 
