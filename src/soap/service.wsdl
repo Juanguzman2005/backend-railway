@@ -145,6 +145,7 @@
     <part name="semestreId" type="xsd:string"/>
     <part name="nombreMateria" type="xsd:string"/>
     <part name="creditos" type="xsd:string"/>
+    <part name="nombreProfesor" type="xsd:string"/>
   </message>
 
   <message name="CreateMateriaResponse">
@@ -173,6 +174,7 @@
     <part name="id" type="xsd:string"/>
     <part name="nombreMateria" type="xsd:string"/>
     <part name="creditos" type="xsd:string"/>
+    <part name="nombreProfesor" type="xsd:string"/>
     <part name="nota1" type="xsd:string"/>
     <part name="nota2" type="xsd:string"/>
     <part name="nota3" type="xsd:string"/>
@@ -185,6 +187,7 @@
     <part name="materiaId" type="xsd:string"/>
     <part name="nombreMateria" type="xsd:string"/>
     <part name="creditos" type="xsd:string"/>
+    <part name="nombreProfesor" type="xsd:string"/>
   </message>
 
   <message name="UpdateMateriaResponse">

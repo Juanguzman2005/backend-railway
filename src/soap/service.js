@@ -373,17 +373,26 @@ module.exports = {
       CreateMateria(args, callback) {
         (async () => {
           try {
-            const { token, semestreId, nombreMateria, creditos } = args;
+            const { token, semestreId, nombreMateria, creditos, nombreProfesor } = args;
             const { uid } = await verifyToken(token);
 
             const nombre = String(nombreMateria ?? "").trim();
             const creditosNum = Number(creditos);
+            const profesor = String(nombreProfesor ?? "").trim();
 
             if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
+
             if (!nombre) return callback({ message: "", error: "El nombre de la materia es obligatorio" });
             if (nombre.length > 30) return callback({ message: "", error: "El nombre debe tener máximo 30 caracteres" });
+
             if (!Number.isInteger(creditosNum) || creditosNum < 1 || creditosNum > 10) {
               return callback({ message: "", error: "Los créditos deben estar entre 1 y 10" });
+            }
+
+            if (!profesor) return callback({ message: "", error: "El nombre del profesor es obligatorio" });
+            if (profesor.length > 40) return callback({ message: "", error: "El nombre del profesor debe tener máximo 40 caracteres" });
+            if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/.test(profesor)) {
+              return callback({ message: "", error: "Nombre de profesor inválido: solo letras y espacios" });
             }
 
             const matRef = await userDoc(uid)
@@ -393,6 +402,7 @@ module.exports = {
               .add({
                 nombreMateria: nombre,
                 creditos: creditosNum,
+                nombreProfesor: profesor, // ✅ NUEVO
                 nota1: 0,
                 nota2: 0,
                 nota3: 0,
@@ -423,11 +433,12 @@ module.exports = {
 
             const materias = [];
             snapshot.forEach((doc) => {
-              const d = doc.data();
+              const d = doc.data() || {};
               materias.push({
                 id: doc.id,
                 nombreMateria: d.nombreMateria,
                 creditos: d.creditos,
+                nombreProfesor: d.nombreProfesor || "", // ✅ NUEVO
                 nota1: d.nota1,
                 nota2: d.nota2,
                 nota3: d.nota3,
@@ -460,14 +471,15 @@ module.exports = {
 
             if (!doc.exists) return callback({ error: "Materia no encontrada" });
 
-            const d = doc.data();
+            const d = doc.data() || {};
             callback({
               id: doc.id,
               nombreMateria: d.nombreMateria,
-              creditos: d.creditos,
-              nota1: d.nota1,
-              nota2: d.nota2,
-              nota3: d.nota3,
+              creditos: String(d.creditos ?? ""),
+              nombreProfesor: d.nombreProfesor || "", // ✅ NUEVO
+              nota1: String(d.nota1 ?? 0),
+              nota2: String(d.nota2 ?? 0),
+              nota3: String(d.nota3 ?? 0),
               error: "",
             });
           } catch (err) {
@@ -477,13 +489,14 @@ module.exports = {
         })();
       },
 
+
       // -------------------------------------------------------------------
       // 10. ACTUALIZAR MATERIA
       // -------------------------------------------------------------------
       UpdateMateria(args, callback) {
         (async () => {
           try {
-            const { token, semestreId, materiaId, nombreMateria, creditos } = args;
+            const { token, semestreId, materiaId, nombreMateria, creditos, nombreProfesor } = args;
             const { uid } = await verifyToken(token);
 
             if (!semestreId) return callback({ message: "", error: "semestreId es obligatorio" });
@@ -504,6 +517,17 @@ module.exports = {
                 return callback({ message: "", error: "Los créditos deben estar entre 1 y 10" });
               }
               fields.creditos = creditosNum;
+            }
+
+            // ✅ NUEVO: profesor (permite actualizarlo y también agregarlo a materias viejas)
+            if (nombreProfesor !== undefined) {
+              const profesor = String(nombreProfesor ?? "").trim();
+              if (!profesor) return callback({ message: "", error: "El nombre del profesor es obligatorio" });
+              if (profesor.length > 40) return callback({ message: "", error: "El nombre del profesor debe tener máximo 40 caracteres" });
+              if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/.test(profesor)) {
+                return callback({ message: "", error: "Nombre de profesor inválido: solo letras y espacios" });
+              }
+              fields.nombreProfesor = profesor;
             }
 
             if (Object.keys(fields).length === 0) {
