@@ -38,6 +38,34 @@ async function deleteCollection(collectionRef, batchSize = 50) {
   await deleteCollection(collectionRef, batchSize);
 }
 
+function normalizeEmail(correo) {
+  return String(correo || "").trim().toLowerCase();
+}
+
+// genera: XXXX-XXXX usando letras/números (sin caracteres raros)
+function generateBackupCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  // (sin O,0, I,1 para evitar confusiones)
+  const pick = () => alphabet[Math.floor(Math.random() * alphabet.length)];
+
+  const part1 = Array.from({ length: 4 }, pick).join("");
+  const part2 = Array.from({ length: 4 }, pick).join("");
+  return `${part1}-${part2}`;
+}
+
+async function findUserByEmail(correo) {
+  const snapshot = await db
+    .collection(USERS_COLLECTION)
+    .where("correo", "==", correo)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { uid: doc.id, ref: doc.ref, data: doc.data() };
+}
+
+
 module.exports = {
   StudentService: {
     StudentPort: {
@@ -764,6 +792,246 @@ module.exports = {
           } catch (err) {
             console.error("ConfirmPasswordReset error:", err);
             return callbackOnce({ message: "", error: "Error actualizando la contraseña" });
+          }
+        })();
+      },
+      GenerateBackupCodes(args, callback) {
+        (async () => {
+          let done = false;
+          const cb = (payload) => {
+            if (done) return;
+            done = true;
+            callback(payload);
+          };
+
+          try {
+            const { token } = args;
+            const { uid } = await verifyToken(token);
+
+            // genera 10 códigos nuevos
+            const codes = [];
+            for (let i = 0; i < 10; i++) codes.push(generateBackupCode());
+
+            // guarda hashes
+            const hashed = await Promise.all(
+              codes.map(async (code) => ({
+                hash: await bcrypt.hash(code, 10),
+                used: false,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                usedAt: null,
+              }))
+            );
+
+            await userDoc(uid).set(
+              {
+                backupCodes: hashed,
+                backupCodesGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+
+            // ✅ devolvemos los códigos en texto plano SOLO una vez
+            return cb({
+              message: "Códigos generados correctamente. Guárdalos en un lugar seguro.",
+              codes, // ✅ ahora es array real (mejor para React)
+              error: "",
+            });
+          } catch (err) {
+            console.error("GenerateBackupCodes error:", err);
+            return cb({
+              message: "",
+              codes: [], // ✅ array vacío real
+              error: err.message || "Error generando códigos",
+            });
+          }
+        })();
+      },
+
+      ResetPasswordWithBackupCode(args, callback) {
+        (async () => {
+          // callback solo una vez
+          let done = false;
+          const callbackOnce = (payload) => {
+            if (done) return;
+            done = true;
+            callback(payload);
+          };
+
+          try {
+            const correo = normalizeEmail(args?.correo);
+            const codeRaw = String(args?.code ?? "").trim().toUpperCase();
+            const nuevaContraseña = String(args?.nuevaContraseña ?? "");
+
+            if (!correo) return callbackOnce({ message: "", error: "El correo es obligatorio" });
+            if (!codeRaw) return callbackOnce({ message: "", error: "El código es obligatorio" });
+            if (nuevaContraseña.length < 6) {
+              return callbackOnce({ message: "", error: "La contraseña debe tener al menos 6 caracteres" });
+            }
+
+            const user = await findUserByEmail(correo);
+            if (!user) {
+              // no revelamos si existe o no
+              return callbackOnce({ message: "", error: "Código inválido o no disponible" });
+            }
+
+            const codesArr = Array.isArray(user.data?.backupCodes) ? user.data.backupCodes : [];
+            if (codesArr.length === 0) {
+              return callbackOnce({ message: "", error: "Este usuario no tiene códigos de respaldo generados" });
+            }
+
+            // buscar un código no usado que haga match
+            let matchIndex = -1;
+            for (let i = 0; i < codesArr.length; i++) {
+              const item = codesArr[i];
+              if (!item || item.used) continue;
+
+              const ok = await bcrypt.compare(codeRaw, item.hash);
+              if (ok) {
+                matchIndex = i;
+                break;
+              }
+            }
+
+            if (matchIndex === -1) {
+              return callbackOnce({ message: "", error: "Código inválido o ya usado" });
+            }
+
+            // marcar como usado + cambiar contraseña (transacción)
+            await db.runTransaction(async (tx) => {
+              const snap = await tx.get(user.ref);
+              if (!snap.exists) throw new Error("Usuario no encontrado");
+
+              const data = snap.data() || {};
+              const arr = Array.isArray(data.backupCodes) ? data.backupCodes : [];
+
+              // revalidar dentro de transacción
+              const item = arr[matchIndex];
+              if (!item || item.used) throw new Error("Código inválido o ya usado");
+
+              // (opcional) podrías volver a compare aquí, pero ya lo hicimos afuera
+              arr[matchIndex] = {
+                ...item,
+                used: true,
+                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+              };
+
+              const hashPass = await bcrypt.hash(nuevaContraseña, 10);
+
+              tx.update(user.ref, {
+                contraseña_hash: hashPass,
+                backupCodes: arr,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            });
+
+            return callbackOnce({ message: "Contraseña actualizada correctamente", error: "" });
+          } catch (err) {
+            console.error("ResetPasswordWithBackupCode error:", err);
+            return callbackOnce({ message: "", error: err.message || "Error reseteando contraseña" });
+          }
+        })();
+      },
+      ValidateBackupCode(args, callback) {
+        (async () => {
+          let done = false;
+          const cb = (p) => { if (!done) { done = true; callback(p); } };
+
+          try {
+            const correo = normalizeEmail(args?.correo);
+            const codeRaw = String(args?.code ?? "").trim().toUpperCase();
+
+            if (!correo) return cb({ resetToken: "", message: "", error: "El correo es obligatorio" });
+            if (correo.length > 40) return cb({ resetToken: "", message: "", error: "El correo debe tener máximo 40 caracteres" });
+            if (!codeRaw) return cb({ resetToken: "", message: "", error: "El código es obligatorio" });
+
+            const user = await findUserByEmail(correo);
+            if (!user) return cb({ resetToken: "", message: "", error: "Código inválido o no disponible" });
+
+            const codesArr = Array.isArray(user.data?.backupCodes) ? user.data.backupCodes : [];
+            if (!codesArr.length) return cb({ resetToken: "", message: "", error: "Este usuario no tiene códigos de respaldo" });
+
+            let matchIndex = -1;
+            for (let i = 0; i < codesArr.length; i++) {
+              const item = codesArr[i];
+              if (!item || item.used) continue;
+
+              const ok = await bcrypt.compare(codeRaw, item.hash);
+              if (ok) { matchIndex = i; break; }
+            }
+
+            if (matchIndex === -1) return cb({ resetToken: "", message: "", error: "Código inválido o ya usado" });
+
+            // resetToken temporal (válido 10 min)
+            const resetToken = jwt.sign(
+              { uid: user.uid, correo, matchIndex, purpose: "reset_with_backup" },
+              process.env.JWT_SECRET,
+              { expiresIn: "10m" }
+            );
+
+            return cb({ resetToken, message: "Código válido. Continúa para crear tu nueva contraseña.", error: "" });
+          } catch (err) {
+            console.error("ValidateBackupCode error:", err);
+            return cb({ resetToken: "", message: "", error: err.message || "Error validando código" });
+          }
+        })();
+      },
+      ConfirmResetWithBackupToken(args, callback) {
+        (async () => {
+          let done = false;
+          const cb = (p) => { if (!done) { done = true; callback(p); } };
+
+          try {
+            const resetToken = String(args?.resetToken ?? "").trim();
+            const nuevaContraseña = String(args?.nuevaContraseña ?? "");
+
+            if (!resetToken) return cb({ message: "", error: "Token inválido" });
+            if (nuevaContraseña.length < 6 || nuevaContraseña.length > 11) {
+              return cb({ message: "", error: "La contraseña debe tener entre 6 y 11 caracteres" });
+            }
+
+            let payload;
+            try {
+              payload = jwt.verify(resetToken, process.env.JWT_SECRET);
+            } catch {
+              return cb({ message: "", error: "Token inválido o expirado" });
+            }
+
+            if (payload?.purpose !== "reset_with_backup") {
+              return cb({ message: "", error: "Token inválido" });
+            }
+
+            const { uid, matchIndex } = payload;
+
+            await db.runTransaction(async (tx) => {
+              const ref = userDoc(uid);
+              const snap = await tx.get(ref);
+              if (!snap.exists) throw new Error("Usuario no encontrado");
+
+              const data = snap.data() || {};
+              const arr = Array.isArray(data.backupCodes) ? data.backupCodes : [];
+              const item = arr[matchIndex];
+
+              if (!item || item.used) throw new Error("Código inválido o ya usado");
+
+              const hashPass = await bcrypt.hash(nuevaContraseña, 10);
+
+              arr[matchIndex] = {
+                ...item,
+                used: true,
+                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+              };
+
+              tx.update(ref, {
+                contraseña_hash: hashPass,
+                backupCodes: arr,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            });
+
+            return cb({ message: "Contraseña actualizada correctamente", error: "" });
+          } catch (err) {
+            console.error("ConfirmResetWithBackupToken error:", err);
+            return cb({ message: "", error: err.message || "Error actualizando contraseña" });
           }
         })();
       },

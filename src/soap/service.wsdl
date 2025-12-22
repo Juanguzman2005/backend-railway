@@ -232,6 +232,50 @@
     <part name="error" type="xsd:string"/>
   </message>
 
+  <message name="GenerateBackupCodesRequest">
+    <part name="token" type="xsd:string" />
+  </message>
+
+  <message name="GenerateBackupCodesResponse">
+    <part name="message" type="xsd:string" />
+    <part name="codes" type="xsd:string" /> <!-- JSON -->
+    <part name="error" type="xsd:string" />
+  </message>
+
+  <message name="ResetPasswordWithBackupCodeRequest">
+    <part name="correo" type="xsd:string" />
+    <part name="code" type="xsd:string" />
+    <part name="nuevaContraseña" type="xsd:string" />
+  </message>
+
+  <message name="ResetPasswordWithBackupCodeResponse">
+    <part name="message" type="xsd:string" />
+    <part name="error" type="xsd:string" />
+  </message>
+
+  <message name="ValidateBackupCodeRequest">
+    <part name="correo" type="xsd:string"/>
+    <part name="code" type="xsd:string"/>
+  </message>
+
+  <message name="ValidateBackupCodeResponse">
+    <part name="resetToken" type="xsd:string"/>
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/>
+  </message>
+
+  <message name="ConfirmResetWithBackupTokenRequest">
+    <part name="resetToken" type="xsd:string"/>
+    <part name="nuevaContraseña" type="xsd:string"/>
+  </message>
+
+  <message name="ConfirmResetWithBackupTokenResponse">
+    <part name="message" type="xsd:string"/>
+    <part name="error" type="xsd:string"/> 
+  </message>
+
+
+
   <!-- ================= PORT TYPE ================= -->
   <portType name="StudentPort">
    
@@ -324,6 +368,28 @@
       <input message="tns:EliminarNotaRequest"/>
       <output message="tns:EliminarNotaResponse"/>
     </operation>
+
+    <operation name="GenerateBackupCodes">
+      <input message="tns:GenerateBackupCodesRequest" />
+      <output message="tns:GenerateBackupCodesResponse" />
+    </operation>
+
+    <operation name="ResetPasswordWithBackupCode">
+      <input message="tns:ResetPasswordWithBackupCodeRequest" />
+      <output message="tns:ResetPasswordWithBackupCodeResponse" />
+    </operation>
+
+    <operation name="ValidateBackupCode">
+      <input message="tns:ValidateBackupCodeRequest"/>
+      <output message="tns:ValidateBackupCodeResponse"/>
+    </operation>
+
+    <operation name="ConfirmResetWithBackupToken">
+      <input message="tns:ConfirmResetWithBackupTokenRequest"/>
+      <output message="tns:ConfirmResetWithBackupTokenResponse"/>
+    </operation>
+
+
 
   </portType>
 
@@ -461,6 +527,32 @@
       <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
       <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
     </operation>
+
+    <operation name="GenerateBackupCodes">
+      <soap:operation soapAction="GenerateBackupCodes"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="ResetPasswordWithBackupCode">
+      <soap:operation soapAction="ResetPasswordWithBackupCode"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="ValidateBackupCode">
+      <soap:operation soapAction="ValidateBackupCode"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+    <operation name="ConfirmResetWithBackupToken">
+      <soap:operation soapAction="ConfirmResetWithBackupToken"/>
+      <input><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+      <output><soap:body use="encoded" namespace="urn:student" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+    </operation>
+
+
 
   </binding>
 
