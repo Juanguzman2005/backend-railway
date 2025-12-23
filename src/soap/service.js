@@ -797,13 +797,6 @@ module.exports = {
       },
       GenerateBackupCodes(args, callback) {
         (async () => {
-          let done = false;
-          const cb = (payload) => {
-            if (done) return;
-            done = true;
-            callback(payload);
-          };
-
           try {
             const { token } = args;
             const { uid } = await verifyToken(token);
@@ -812,38 +805,37 @@ module.exports = {
             const codes = [];
             for (let i = 0; i < 10; i++) codes.push(generateBackupCode());
 
-            // ✅ Timestamp válido para usar dentro de arrays
-            const createdAt = admin.firestore.Timestamp.now();
+            // ⚠️ Firestore NO permite serverTimestamp() dentro de arrays
+            const nowTs = admin.firestore.Timestamp.now();
 
             // guarda hashes
             const hashed = await Promise.all(
               codes.map(async (code) => ({
                 hash: await bcrypt.hash(code, 10),
                 used: false,
-                createdAt,   // ✅ OK en arrays
-                usedAt: null // ✅ OK
+                createdAt: nowTs, // ✅ Timestamp real
+                usedAt: null,
               }))
             );
 
             await userDoc(uid).set(
               {
                 backupCodes: hashed,
-                backupCodesGeneratedAt: admin.firestore.FieldValue.serverTimestamp(), // ✅ OK fuera del array
+                backupCodesGeneratedAt: admin.firestore.FieldValue.serverTimestamp(), // ✅ permitido
               },
               { merge: true }
             );
 
-            return cb({
+            callback({
               message: "Códigos generados correctamente. Guárdalos en un lugar seguro.",
-              codes: JSON.stringify(codes), // 👈 así lo parseas en frontend
+              codes: JSON.stringify(codes),
               error: "",
             });
-
           } catch (err) {
             console.error("GenerateBackupCodes error:", err);
-            return cb({
+            callback({
               message: "",
-              codes: [],
+              codes: "[]",
               error: err.message || "Error generando códigos",
             });
           }
@@ -867,13 +859,12 @@ module.exports = {
 
             if (!correo) return callbackOnce({ message: "", error: "El correo es obligatorio" });
             if (!codeRaw) return callbackOnce({ message: "", error: "El código es obligatorio" });
-            if (nuevaContraseña.length < 6) {
-              return callbackOnce({ message: "", error: "La contraseña debe tener al menos 6 caracteres" });
+            if (nuevaContraseña.length < 6 || nuevaContraseña.length > 11) {
+              return callbackOnce({ message: "", error: "La contraseña debe tener entre 6 y 11 caracteres" });
             }
 
             const user = await findUserByEmail(correo);
             if (!user) {
-              // no revelamos si existe o no
               return callbackOnce({ message: "", error: "Código inválido o no disponible" });
             }
 
@@ -907,15 +898,15 @@ module.exports = {
               const data = snap.data() || {};
               const arr = Array.isArray(data.backupCodes) ? data.backupCodes : [];
 
-              // revalidar dentro de transacción
               const item = arr[matchIndex];
               if (!item || item.used) throw new Error("Código inválido o ya usado");
 
-              // (opcional) podrías volver a compare aquí, pero ya lo hicimos afuera
+              const nowTs = admin.firestore.Timestamp.now(); // ✅ Timestamp real dentro del array
+
               arr[matchIndex] = {
                 ...item,
                 used: true,
-                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+                usedAt: nowTs, // ✅ NO serverTimestamp en arrays
               };
 
               const hashPass = await bcrypt.hash(nuevaContraseña, 10);
@@ -923,7 +914,7 @@ module.exports = {
               tx.update(user.ref, {
                 contraseña_hash: hashPass,
                 backupCodes: arr,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(), // ✅ permitido
               });
             });
 
@@ -934,6 +925,7 @@ module.exports = {
           }
         })();
       },
+
       ValidateBackupCode(args, callback) {
         (async () => {
           let done = false;
@@ -1018,16 +1010,18 @@ module.exports = {
 
               const hashPass = await bcrypt.hash(nuevaContraseña, 10);
 
+              const nowTs = admin.firestore.Timestamp.now(); // ✅ Timestamp real dentro del array
+
               arr[matchIndex] = {
                 ...item,
                 used: true,
-                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+                usedAt: nowTs, // ✅ NO serverTimestamp en arrays
               };
 
               tx.update(ref, {
                 contraseña_hash: hashPass,
                 backupCodes: arr,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(), // ✅ permitido
               });
             });
 
