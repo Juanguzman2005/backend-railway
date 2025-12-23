@@ -812,35 +812,37 @@ module.exports = {
             const codes = [];
             for (let i = 0; i < 10; i++) codes.push(generateBackupCode());
 
+            // ✅ Timestamp válido para usar dentro de arrays
+            const createdAt = admin.firestore.Timestamp.now();
+
             // guarda hashes
             const hashed = await Promise.all(
               codes.map(async (code) => ({
                 hash: await bcrypt.hash(code, 10),
                 used: false,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                usedAt: null,
+                createdAt,   // ✅ OK en arrays
+                usedAt: null // ✅ OK
               }))
             );
 
             await userDoc(uid).set(
               {
                 backupCodes: hashed,
-                backupCodesGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
+                backupCodesGeneratedAt: admin.firestore.FieldValue.serverTimestamp(), // ✅ OK fuera del array
               },
               { merge: true }
             );
 
-            // ✅ devolvemos los códigos en texto plano SOLO una vez
             return cb({
               message: "Códigos generados correctamente. Guárdalos en un lugar seguro.",
-              codes, // ✅ ahora es array real (mejor para React)
+              codes,
               error: "",
             });
           } catch (err) {
             console.error("GenerateBackupCodes error:", err);
             return cb({
               message: "",
-              codes: [], // ✅ array vacío real
+              codes: [],
               error: err.message || "Error generando códigos",
             });
           }
