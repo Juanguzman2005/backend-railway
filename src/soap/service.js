@@ -835,9 +835,10 @@ module.exports = {
 
             return cb({
               message: "Códigos generados correctamente. Guárdalos en un lugar seguro.",
-              codes,
+              codes: JSON.stringify(codes), // 👈 así lo parseas en frontend
               error: "",
             });
+
           } catch (err) {
             console.error("GenerateBackupCodes error:", err);
             return cb({
